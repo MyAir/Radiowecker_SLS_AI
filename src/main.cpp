@@ -73,35 +73,35 @@ void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data)
     
     // Get touch point
     TouchPoint point;
-    bool touched = getTouchPoint(&point);
+    bool touched = getTouchPoint(point);
     
     // Update LVGL input data
     data->point.x = point.x;
     data->point.y = point.y;
-    data->state = touched ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    data->state = point.pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
     
     // Debug output on state change or periodically while touched
     if (Serial) {
         uint32_t now = millis();
         
         // On touch state change
-        if (touched != last_touched) {
-            if (touched) {
+        if (point.pressed != last_touched) {
+            if (point.pressed) {
                 Serial.printf("Touch BEGAN: x=%d, y=%d\n", point.x, point.y);
             } else {
                 Serial.println("Touch ENDED");
             }
-            last_touched = touched;
+            last_touched = point.pressed;
         }
         // Periodic update while touched (every 200ms)
-        else if (touched && (now - last_debug > 200)) {
+        else if (point.pressed && (now - last_debug > 200)) {
             Serial.printf("Touch HOLD: x=%d, y=%d\n", point.x, point.y);
             last_debug = now;
         }
     }
     
     // Update last point if touched
-    if (touched) {
+    if (point.pressed) {
         last_point = point;
     }
 }
@@ -162,15 +162,23 @@ void setup()
     lv_display_set_buffers(display, buf1, NULL, sizeof(lv_color_t) * screenWidth * 40, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     // Initialize touch with detailed debugging
-    TOUCH_LOG_LN("===== STARTING TOUCH INITIALIZATION =====");
-    TOUCH_LOG_LN("Initializing touch controller...");
+    if (Serial) {
+        Serial.println("===== STARTING TOUCH INITIALIZATION =====");
+    }
+    if (Serial) {
+        Serial.println("Initializing touch controller...");
+    }
     touch_init();
     
     // Initialize the input device driver
-    TOUCH_LOG_LN("Initializing LVGL touch input device...");
+    if (Serial) {
+        Serial.println("Initializing LVGL touch input device...");
+    }
     static lv_indev_t * touch_indev = lv_indev_create();
     if (!touch_indev) {
-        TOUCH_LOG_LN("ERROR: Failed to create LVGL input device!");
+        if (Serial) {
+            Serial.println("ERROR: Failed to create LVGL input device!");
+        }
     } else {
         lv_indev_set_type(touch_indev, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(touch_indev, my_touchpad_read);
@@ -178,22 +186,22 @@ void setup()
         // Set the display for the input device
         if (display) {
             lv_indev_set_display(touch_indev, display);
-            TOUCH_LOG_LN("Touch input device display set");
+            Serial.println("Touch input device display set");
         } else {
-            TOUCH_LOG_LN("WARNING: Display not available for touch input device");
+            Serial.println("WARNING: Display not available for touch input device");
         }
         
         // Enable the input device
         lv_indev_enable(touch_indev, true);
-        TOUCH_LOG_LN("Touch input device created and configured");
+        Serial.println("Touch input device created and configured");
         
         // Verify the input device is enabled
         if (touch_indev) {
-            TOUCH_LOG_LN("Touch input device is ready");
+            Serial.println("Touch input device is ready");
         } else {
-            TOUCH_LOG_LN("WARNING: Touch input device is not ready!");
+            Serial.println("WARNING: Touch input device is not ready!");
         }
-        TOUCH_LOG_LN("Touch input device enabled");
+        Serial.println("Touch input device enabled");
     }
 
     // Initialize the UI
@@ -235,8 +243,8 @@ void loop()
                 Serial.println("Touch device is enabled");
                 // Try to read touch to keep it active
                 TouchPoint point;
-                if (getTouchPoint(&point)) {
-                    if (point.touched) {
+                if (getTouchPoint(point)) {
+                    if (point.pressed) {
                         Serial.printf("Touch active at X: %d, Y: %d\n", point.x, point.y);
                     }
                 }
