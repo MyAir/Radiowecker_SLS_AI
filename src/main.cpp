@@ -5,10 +5,17 @@
 #include <Wire.h>
 #include "touch.h"
 
+// Use the debug macros from touch.h
+
 // Forward declarations
 void my_log_cb(lv_log_level_t level, const char *buf);
 void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map);
 void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data);
+
+// LVGL display and input device
+lv_display_t * display = NULL;
+lv_indev_t * touch_indev = NULL;
+
 #include <ui.h>
 
 #define GFX_BL 10
@@ -18,9 +25,6 @@ void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data);
 /*Change to your screen resolution*/
 static const uint16_t screenWidth  = 800;
 static const uint16_t screenHeight = 480;
-
-static lv_display_t *display = nullptr;
-static lv_indev_t *touch_indev = nullptr;
 
 Arduino_ESP32RGBPanel *bus = new Arduino_ESP32RGBPanel(
         40 /* DE */, 41 /* VSYNC */, 39 /* HSYNC */, 42 /* PCLK */,
@@ -65,28 +69,40 @@ void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data)
 {
     static TouchPoint last_point = {0};
     static uint32_t last_debug = 0;
+    static bool last_touched = false;
     
     // Get touch point
     TouchPoint point;
     bool touched = getTouchPoint(&point);
     
-    if (touched) {
-        // Update last valid point
-        last_point = point;
-        data->point.x = point.x;
-        data->point.y = point.y;
-        data->state = LV_INDEV_STATE_PRESSED;
+    // Update LVGL input data
+    data->point.x = point.x;
+    data->point.y = point.y;
+    data->state = touched ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    
+    // Debug output on state change or periodically while touched
+    if (Serial) {
+        uint32_t now = millis();
         
-        // Debug output (throttled)
-        if (Serial && (millis() - last_debug > 100)) {
-            Serial.printf("Touch: x=%d, y=%d\n", point.x, point.y);
-            last_debug = millis();
+        // On touch state change
+        if (touched != last_touched) {
+            if (touched) {
+                Serial.printf("Touch BEGAN: x=%d, y=%d\n", point.x, point.y);
+            } else {
+                Serial.println("Touch ENDED");
+            }
+            last_touched = touched;
         }
-    } else {
-        // No touch, use last point with released state
-        data->point.x = last_point.x;
-        data->point.y = last_point.y;
-        data->state = LV_INDEV_STATE_RELEASED;
+        // Periodic update while touched (every 200ms)
+        else if (touched && (now - last_debug > 200)) {
+            Serial.printf("Touch HOLD: x=%d, y=%d\n", point.x, point.y);
+            last_debug = now;
+        }
+    }
+    
+    // Update last point if touched
+    if (touched) {
+        last_point = point;
     }
 }
 
@@ -145,19 +161,39 @@ void setup()
     lv_display_set_flush_cb(display, my_disp_flush);
     lv_display_set_buffers(display, buf1, NULL, sizeof(lv_color_t) * screenWidth * 40, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-    // Initialize touch
-    Serial.println("Initializing Touch...");
+    // Initialize touch with detailed debugging
+    TOUCH_LOG_LN("===== STARTING TOUCH INITIALIZATION =====");
+    TOUCH_LOG_LN("Initializing touch controller...");
     touch_init();
     
-    // Create an input device for the touch screen
-    static lv_indev_t *indev = lv_indev_create();
-    if (indev) {
-        lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-        lv_indev_set_read_cb(indev, my_touchpad_read);
-        touch_indev = indev;
-        Serial.println("Touch input device created");
+    // Initialize the input device driver
+    TOUCH_LOG_LN("Initializing LVGL touch input device...");
+    static lv_indev_t * touch_indev = lv_indev_create();
+    if (!touch_indev) {
+        TOUCH_LOG_LN("ERROR: Failed to create LVGL input device!");
     } else {
-        Serial.println("ERROR: Failed to create touch input device");
+        lv_indev_set_type(touch_indev, LV_INDEV_TYPE_POINTER);
+        lv_indev_set_read_cb(touch_indev, my_touchpad_read);
+        
+        // Set the display for the input device
+        if (display) {
+            lv_indev_set_display(touch_indev, display);
+            TOUCH_LOG_LN("Touch input device display set");
+        } else {
+            TOUCH_LOG_LN("WARNING: Display not available for touch input device");
+        }
+        
+        // Enable the input device
+        lv_indev_enable(touch_indev, true);
+        TOUCH_LOG_LN("Touch input device created and configured");
+        
+        // Verify the input device is enabled
+        if (touch_indev) {
+            TOUCH_LOG_LN("Touch input device is ready");
+        } else {
+            TOUCH_LOG_LN("WARNING: Touch input device is not ready!");
+        }
+        TOUCH_LOG_LN("Touch input device enabled");
     }
 
     // Initialize the UI
@@ -169,17 +205,55 @@ void setup()
 void loop()
 {
     static uint32_t last_print = 0;
+    static uint32_t last_touch_check = 0;
+    static bool first_run = true;
     uint32_t now = millis();
     
     // Handle LVGL tasks
     lv_timer_handler();
     
+    // Force reinitialize touch if needed (only on first run)
+    if (first_run) {
+        // If touch is not initialized properly after 3 seconds, try to reinitialize
+        if (now > 3000 && !touch_initialized) {
+            Serial.println("\n===== REINITIALIZING TOUCH CONTROLLER =====\n");
+            touch_init();
+        }
+        // After 5 seconds, consider first run complete
+        if (now > 5000) {
+            first_run = false;
+        }
+    }
+    
     // Periodically print debug info
     if (now - last_print > 1000) {  // Every second
         if (Serial) {
             Serial.printf("Free heap: %d bytes\n", (int)ESP.getFreeHeap());
+            
+            // Print touch device status
+            if (touch_initialized) {
+                Serial.println("Touch device is enabled");
+                // Try to read touch to keep it active
+                TouchPoint point;
+                if (getTouchPoint(&point)) {
+                    if (point.touched) {
+                        Serial.printf("Touch active at X: %d, Y: %d\n", point.x, point.y);
+                    }
+                }
+            } else {
+                Serial.println("Touch device is not initialized!");
+            }
         }
         last_print = now;
+    }
+    
+    // Check for touch input
+    if (now - last_touch_check > 100) {  // Every 100ms
+        if (touch_indev) {
+            // Force a read of the touch device
+            lv_indev_get_read_timer(touch_indev);
+        }
+        last_touch_check = now;
     }
     
     // Small delay to prevent watchdog reset
