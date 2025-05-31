@@ -161,19 +161,21 @@ void setup()
     lv_display_set_flush_cb(display, my_disp_flush);
     lv_display_set_buffers(display, buf1, NULL, sizeof(lv_color_t) * screenWidth * 40, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-    // Initialize touch with detailed debugging
+    // Initialize touch
+#if TOUCH_DEBUG
     if (Serial) {
         Serial.println("===== STARTING TOUCH INITIALIZATION =====");
-    }
-    if (Serial) {
         Serial.println("Initializing touch controller...");
     }
+#endif
     touch_init();
     
     // Initialize the input device driver
+#if TOUCH_DEBUG
     if (Serial) {
         Serial.println("Initializing LVGL touch input device...");
     }
+#endif
     static lv_indev_t * touch_indev = lv_indev_create();
     if (!touch_indev) {
         if (Serial) {
@@ -186,13 +188,16 @@ void setup()
         // Set the display for the input device
         if (display) {
             lv_indev_set_display(touch_indev, display);
+#if TOUCH_DEBUG
             Serial.println("Touch input device display set");
+#endif
         } else {
             Serial.println("WARNING: Display not available for touch input device");
         }
         
         // Enable the input device
         lv_indev_enable(touch_indev, true);
+#if TOUCH_DEBUG
         Serial.println("Touch input device created and configured");
         
         // Verify the input device is enabled
@@ -202,6 +207,7 @@ void setup()
             Serial.println("WARNING: Touch input device is not ready!");
         }
         Serial.println("Touch input device enabled");
+#endif
     }
 
     // Initialize the UI
@@ -224,7 +230,9 @@ void loop()
     if (first_run) {
         // If touch is not initialized properly after 3 seconds, try to reinitialize
         if (now > 3000 && !touch_initialized) {
+#if TOUCH_DEBUG
             Serial.println("\n===== REINITIALIZING TOUCH CONTROLLER =====\n");
+#endif
             touch_init();
         }
         // After 5 seconds, consider first run complete
@@ -236,9 +244,13 @@ void loop()
     // Periodically print debug info
     if (now - last_print > 1000) {  // Every second
         if (Serial) {
+#if SYSTEM_DEBUG
+            // System debug info
             Serial.printf("Free heap: %d bytes\n", (int)ESP.getFreeHeap());
+#endif
             
-            // Print touch device status
+#if TOUCH_DEBUG
+            // Only print touch debug info if TOUCH_DEBUG is enabled
             if (touch_initialized) {
                 Serial.println("Touch device is enabled");
                 // Try to read touch to keep it active
@@ -249,7 +261,16 @@ void loop()
                     }
                 }
             } else {
+#else
+            // If not in debug mode, just silently keep touch active
+            if (touch_initialized) {
+                TouchPoint point;
+                getTouchPoint(point);
+            } else {
+#endif
+#if TOUCH_DEBUG
                 Serial.println("Touch device is not initialized!");
+#endif
             }
         }
         last_print = now;
