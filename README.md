@@ -1,6 +1,6 @@
 
 
-# Arduino Project MaTouch 5inch
+# Arduino Project MaTouch 4.3inch
 
 ## Prepare Arduino Library
 

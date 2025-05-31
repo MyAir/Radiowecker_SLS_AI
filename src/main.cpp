@@ -92,22 +92,30 @@ void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data)
 
 void setup()
 {
-    // Initialize serial communication
+    // Initialize USB CDC serial communication
     Serial.begin(115200);
-    while (!Serial) {
-        ; // wait for serial port to connect
+    
+    // Wait for USB CDC port to connect or timeout after 3 seconds
+    uint32_t startTime = millis();
+    while (!Serial && (millis() - startTime < 3000)) {
+        delay(10);
     }
     
+    // Extra delay to ensure USB CDC is ready
+    delay(1000);
+    
     Serial.println("\n\n--- Starting Setup ---");
-    Serial.println("Initializing Serial... Done");
+    Serial.println("USB CDC Serial initialized");
+    Serial.printf("CPU Frequency: %d MHz\n", getCpuFrequencyMhz());
+    Serial.printf("Free Heap: %d bytes\n", ESP.getFreeHeap());
 
     // Initialize display
-    Serial.println("Initializing Display...");
+    if (Serial) Serial.println("Initializing Display...");
     gfx->begin();
     gfx->fillScreen(BLACK);
     pinMode(GFX_BL, OUTPUT);
     digitalWrite(GFX_BL, HIGH); // Turn on backlight
-    Serial.println("Display initialized");
+    if (Serial) Serial.println("Display initialized");
     
     // Print LVGL version
     String LVGL_Arduino = "LVGL v";
