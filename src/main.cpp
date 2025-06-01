@@ -86,16 +86,20 @@ void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data)
         
         // On touch state change
         if (point.pressed != last_touched) {
+#if TOUCH_DEBUG
             if (point.pressed) {
                 Serial.printf("Touch BEGAN: x=%d, y=%d\n", point.x, point.y);
             } else {
                 Serial.println("Touch ENDED");
             }
+#endif
             last_touched = point.pressed;
         }
         // Periodic update while touched (every 200ms)
         else if (point.pressed && (now - last_debug > 200)) {
+#if TOUCH_DEBUG
             Serial.printf("Touch HOLD: x=%d, y=%d\n", point.x, point.y);
+#endif
             last_debug = now;
         }
     }
@@ -221,7 +225,14 @@ void loop()
     static uint32_t last_print = 0;
     static uint32_t last_touch_check = 0;
     static bool first_run = true;
+    static uint32_t last_tick = 0;
     uint32_t now = millis();
+    
+    // Update LVGL tick counter - required despite LV_TICK_CUSTOM=1
+    if(now - last_tick > 0) {
+        lv_tick_inc(now - last_tick);
+        last_tick = now;
+    }
     
     // Handle LVGL tasks
     lv_timer_handler();
