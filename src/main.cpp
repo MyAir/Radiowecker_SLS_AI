@@ -110,6 +110,12 @@ void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data)
     }
 }
 
+/*use Arduinos millis() as tick source*/
+static uint32_t my_tick(void)
+{
+    return millis();
+}
+
 void setup()
 {
     // Initialize USB CDC serial communication
@@ -145,6 +151,9 @@ void setup()
     // Initialize LVGL
     Serial.println("Initializing LVGL...");
     lv_init();
+    /*Set a tick source so that LVGL will know how much time elapsed. */
+    lv_tick_set_cb(my_tick);
+
     Serial.println("LVGL initialized");
 
 #if LV_USE_LOG != 0
@@ -228,11 +237,11 @@ void loop()
     static uint32_t last_tick = 0;
     uint32_t now = millis();
     
-    // Update LVGL tick counter - required despite LV_TICK_CUSTOM=1
-    if(now - last_tick > 0) {
-        lv_tick_inc(now - last_tick);
-        last_tick = now;
-    }
+    // // Update LVGL tick counter - required for proper timing
+    // if(now - last_tick > 0) {
+    //     lv_tick_inc(now - last_tick);
+    //     last_tick = now;
+    // }
     
     // Handle LVGL tasks
     lv_timer_handler();

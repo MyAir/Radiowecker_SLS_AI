@@ -41,4 +41,3 @@ bool getTouchPoint(TouchPoint& point);
 typedef TouchPoint touch_point_t;
 
 #endif // TOUCH_H
-
