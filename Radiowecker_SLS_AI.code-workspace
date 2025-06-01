@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"new": "cpp",
+			"ostream": "cpp",
+			"lvgl.h": "c",
+			"ui_events.h": "c",
+			"ui_screen1.h": "c",
+			"ui_helpers.h": "c"
+		}
+	}
+}
