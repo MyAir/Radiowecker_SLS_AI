@@ -544,8 +544,26 @@ void updateWiFiStatusUI() {
         // Convert RSSI to quality percentage (typically, -50dBm is excellent, -100dBm is poor)
         int quality = constrain(map(rssi, -100, -50, 0, 100), 0, 100);
         
-        // Create quality string with WiFi symbol
-        String qualityStr = String(LV_SYMBOL_WIFI) + " " + String(quality) + "%";
+        // Create quality string with WiFi symbol and color based on quality
+        String colorTag;
+        
+        // Color gradient from red to yellow to green based on quality
+        if (quality < 30) {
+            // Poor signal - red
+            colorTag = "#FF0000 ";
+        } else if (quality < 50) {
+            // Weak signal - orange
+            colorTag = "#FF8000 ";
+        } else if (quality < 70) {
+            // Medium signal - yellow
+            colorTag = "#FFFF00 ";
+        } else {
+            // Good signal - green
+            colorTag = "#00FF00 ";
+        }
+        
+        // Format with LVGL color text: #RRGGBB followed by the text
+        String qualityStr = String(LV_SYMBOL_WIFI) + " " + colorTag + String(quality) + "%";
         
         // Debug output
         Serial.print("Updating WiFi UI - SSID: ");
@@ -580,7 +598,8 @@ void updateWiFiStatusUI() {
         }
         
         if (ui_wifiQualityLabel != NULL) {
-            lv_label_set_text(ui_wifiQualityLabel, LV_SYMBOL_WIFI "  --");
+            // Show disconnected WiFi in red
+            lv_label_set_text(ui_wifiQualityLabel, LV_SYMBOL_WIFI "  #FF0000 --");
         }
     }
 }
@@ -592,6 +611,12 @@ void wifiStatusTimerCallback(lv_timer_t * timer) {
 
 // Start all periodic tasks
 void startPeriodicTasks() {
+    // Enable recoloring on the WiFi quality label to support colored text
+    if (ui_wifiQualityLabel != NULL) {
+        // Enable label recoloring to support HTML-style color tags
+        lv_label_set_recolor(ui_wifiQualityLabel, true);
+    }
+    
     // Create a timer that runs every 10 seconds (10000ms) for WiFi status updates
     wifi_status_timer = lv_timer_create(wifiStatusTimerCallback, 10000, NULL);
     
