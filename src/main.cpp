@@ -2,9 +2,12 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include <Arduino_GFX_Library.h>
-#include <Wire.h>
+#include <SPIFFS.h>
 #include <SD.h>
 #include <SPI.h>
+#include <WiFi.h>
+#include <ArduinoJson.h>
+#include <time.h>
 #include "touch.h"
 
 // Use the debug macros from touch.h
@@ -14,6 +17,8 @@ void my_log_cb(lv_log_level_t level, const char *buf);
 void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map);
 void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data);
 void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels);
+void connectToWiFi();
+void syncTimeFromNTP(DynamicJsonDocument& config);
 
 // LVGL display and input device
 lv_display_t * display = NULL;
@@ -304,6 +309,9 @@ void setup()
         Serial.printf("LVGL filesystem driver registered with letter '%c:'", DRIVE_LETTER);
         Serial.println();
         
+        // Connect to WiFi using credentials from config.json
+        connectToWiFi();
+        
 #if SD_DEBUG
         // List files on SD card
         Serial.println("Files on SD Card:");
@@ -315,6 +323,121 @@ void setup()
     ui_init();
 
     Serial.println("Setup done");
+}
+
+// Connect to WiFi using credentials from config.json on SD card
+void connectToWiFi() {
+    Serial.println("Reading WiFi credentials from config.json...");
+    
+    // Check if config file exists on SD card
+    if (!SD.exists("/config.json")) {
+        Serial.println("Error: config.json not found on SD card!");
+        return;
+    }
+    
+    // Open config.json file
+    File configFile = SD.open("/config.json", FILE_READ);
+    if (!configFile) {
+        Serial.println("Error: Failed to open config.json");
+        return;
+    }
+    
+    // Allocate a buffer to store contents of the file
+    // We need a larger capacity for the JSON document - 4KB should be plenty
+    const size_t capacity = 4096;
+    DynamicJsonDocument doc(capacity);
+    
+    // Parse JSON
+    DeserializationError error = deserializeJson(doc, configFile);
+    configFile.close();
+    
+    // Check for parsing errors
+    if (error) {
+        Serial.print("Error parsing JSON: ");
+        Serial.println(error.c_str());
+        return;
+    }
+    
+    // Extract WiFi credentials
+    const char* ssid = doc["wifi"]["ssid"];
+    const char* password = doc["wifi"]["password"];
+    
+    if (!ssid || !password) {
+        Serial.println("Error: WiFi credentials not found in config.json");
+        return;
+    }
+    
+    // Connect to WiFi
+    Serial.print("Connecting to WiFi SSID: ");
+    Serial.println(ssid);
+    
+    WiFi.begin(ssid, password);
+    
+    // Wait for connection with timeout
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println();
+        Serial.print("WiFi connected! IP address: ");
+        Serial.println(WiFi.localIP());
+        
+        // Time sync after WiFi is connected
+        syncTimeFromNTP(doc);
+    } else {
+        Serial.println();
+        Serial.println("WiFi connection failed!");
+    }
+}
+
+// NTP time synchronization function
+void syncTimeFromNTP(DynamicJsonDocument& config) {
+    Serial.println("Synchronizing time from NTP...");
+    
+    // Extract NTP server and timezone from config
+    const char* ntpServer1 = config["ntp"]["server1"] | "pool.ntp.org";
+    const char* ntpServer2 = config["ntp"]["server2"] | "time.nist.gov";
+    const char* timezone = config["ntp"]["timezone"] | "CET-1CEST,M3.5.0,M10.5.0/3";
+    
+    Serial.print("NTP Server 1: ");
+    Serial.println(ntpServer1);
+    Serial.print("NTP Server 2: ");
+    Serial.println(ntpServer2);
+    Serial.print("Timezone: ");
+    Serial.println(timezone);
+    
+    // Configure time with NTP servers and timezone
+    configTzTime(timezone, ntpServer1, ntpServer2);
+    
+    // Wait for time to be set
+    struct tm timeinfo;
+    int retry = 0;
+    const int maxRetries = 10;
+    
+    Serial.println("Waiting for NTP synchronization");
+    while (!getLocalTime(&timeinfo) && retry < maxRetries) {
+        Serial.print(".");
+        delay(1000);
+        retry++;
+    }
+    
+    if (retry < maxRetries) {
+        Serial.println();
+        Serial.println("Time synchronized!");
+        
+        // Display the current time
+        char timeStr[64];
+        strftime(timeStr, sizeof(timeStr), "%A, %B %d %Y %H:%M:%S", &timeinfo);
+        Serial.print("Current time: ");
+        Serial.println(timeStr);
+    } else {
+        Serial.println();
+        Serial.println("Failed to synchronize time!");
+    }
 }
 
 // LVGL Filesystem Driver Functions
