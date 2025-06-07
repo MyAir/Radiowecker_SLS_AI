@@ -20,14 +20,22 @@ void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels);
 void connectToWiFi();
 void syncTimeFromNTP(DynamicJsonDocument& config);
 void updateWiFiStatusUI();
+void updateTimeUI();
+void updateDateUI();
 void startPeriodicTasks();
+void wifiStatusTimerCallback(lv_timer_t *timer);
+void timeUpdateTimerCallback(lv_timer_t *timer);
 
 // LVGL display and input device
 lv_display_t * display = NULL;
 lv_indev_t * touch_indev = NULL;
 
-// Timer for periodic WiFi status updates
+// LVGL timers
 lv_timer_t * wifi_status_timer = NULL;
+lv_timer_t * time_update_timer = NULL;
+
+// Time tracking
+int last_update_hour = -1;
 
 // Variable to store last WiFi status update time
 unsigned long lastWiFiUpdateTime = 0;
@@ -566,12 +574,14 @@ void updateWiFiStatusUI() {
         String qualityStr = String(LV_SYMBOL_WIFI) + " " + colorTag + String(quality) + "%";
         
         // Debug output
+#if UI_DEBUG
         Serial.print("Updating WiFi UI - SSID: ");
         Serial.print(ssid);
         Serial.print(", IP: ");
         Serial.print(ip);
         Serial.print(", Quality: ");
         Serial.println(qualityStr);
+#endif
         
         // Update the UI labels
         if (ui_wifiLabel != NULL) {
@@ -609,6 +619,65 @@ void wifiStatusTimerCallback(lv_timer_t * timer) {
     updateWiFiStatusUI();
 }
 
+// Update time on the main screen
+void updateTimeUI() {
+    struct tm timeinfo;
+    char timeString[9];
+    
+    if (getLocalTime(&timeinfo)) {
+        strftime(timeString, sizeof(timeString), "%H:%M:%S", &timeinfo);
+        
+        if (ui_Uhrzeit != NULL) {
+            lv_label_set_text(ui_Uhrzeit, timeString);
+        }
+    }
+}
+
+// Update date on the main screen in German format
+void updateDateUI() {
+    struct tm timeinfo;
+    char dateString[30];
+    
+    if (getLocalTime(&timeinfo)) {
+        // Get current hour to track hour changes
+        int current_hour = timeinfo.tm_hour;
+        
+        // Store the last update hour
+        last_update_hour = current_hour;
+        
+        // Array of German weekday names
+        const char* weekdays_de[] = {"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"};
+        
+        // Format: Weekday dd.mm.yyyy
+        sprintf(dateString, "%s %02d.%02d.%04d", 
+                weekdays_de[timeinfo.tm_wday], 
+                timeinfo.tm_mday, 
+                timeinfo.tm_mon + 1, 
+                timeinfo.tm_year + 1900);
+        
+        if (ui_Datum != NULL) {
+            lv_label_set_text(ui_Datum, dateString);
+#if UI_DEBUG
+            Serial.print("Date updated: ");
+            Serial.println(dateString);
+#endif
+        }
+    }
+}
+
+// Callback for time update timer
+void timeUpdateTimerCallback(lv_timer_t *timer) {
+    updateTimeUI();
+    
+    // Check if hour has changed to update date as well
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo)) {
+        if (timeinfo.tm_hour != last_update_hour) {
+            updateDateUI();
+        }
+    }
+}
+
 // Start all periodic tasks
 void startPeriodicTasks() {
     // Enable recoloring on the WiFi quality label to support colored text
@@ -620,8 +689,13 @@ void startPeriodicTasks() {
     // Create a timer that runs every 10 seconds (10000ms) for WiFi status updates
     wifi_status_timer = lv_timer_create(wifiStatusTimerCallback, 10000, NULL);
     
-    // Run the first update immediately
+    // Create a timer that runs every second (1000ms) for time updates
+    time_update_timer = lv_timer_create(timeUpdateTimerCallback, 1000, NULL);
+    
+    // Run the first updates immediately
     updateWiFiStatusUI();
+    updateTimeUI();
+    updateDateUI();
 }
 
 void loop()
