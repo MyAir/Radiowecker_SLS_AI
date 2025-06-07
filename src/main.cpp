@@ -304,7 +304,7 @@ void setup()
         Serial.printf("LVGL filesystem driver registered with letter '%c:'", DRIVE_LETTER);
         Serial.println();
         
-#ifdef SD_DEBUG
+#if SD_DEBUG
         // List files on SD card
         Serial.println("Files on SD Card:");
         listDirectory(SD, "/", 0);
