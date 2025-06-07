@@ -19,10 +19,18 @@ void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data);
 void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels);
 void connectToWiFi();
 void syncTimeFromNTP(DynamicJsonDocument& config);
+void updateWiFiStatusUI();
+void startPeriodicTasks();
 
 // LVGL display and input device
 lv_display_t * display = NULL;
 lv_indev_t * touch_indev = NULL;
+
+// Timer for periodic WiFi status updates
+lv_timer_t * wifi_status_timer = NULL;
+
+// Variable to store last WiFi status update time
+unsigned long lastWiFiUpdateTime = 0;
 
 #include <ui.h>
 
@@ -321,6 +329,10 @@ void setup()
 
     // Initialize the UI
     ui_init();
+    Serial.println("UI initialized");
+    
+    // Start periodic tasks (WiFi status updates, etc.)
+    startPeriodicTasks();
 
     Serial.println("Setup done");
 }
@@ -520,6 +532,73 @@ static lv_fs_res_t fs_tell(lv_fs_drv_t * drv, void * file_p, uint32_t * pos_p) {
     return LV_FS_RES_OK;
 }
 
+// Update WiFi status information in the UI
+void updateWiFiStatusUI() {
+    // Only update if WiFi is connected
+    if (WiFi.status() == WL_CONNECTED) {
+        // Get current WiFi information
+        String ssid = WiFi.SSID();
+        String ip = WiFi.localIP().toString();
+        int rssi = WiFi.RSSI(); // Signal strength in dBm
+        
+        // Convert RSSI to quality percentage (typically, -50dBm is excellent, -100dBm is poor)
+        int quality = constrain(map(rssi, -100, -50, 0, 100), 0, 100);
+        
+        // Create quality string with WiFi symbol
+        String qualityStr = String(LV_SYMBOL_WIFI) + " " + String(quality) + "%";
+        
+        // Debug output
+        Serial.print("Updating WiFi UI - SSID: ");
+        Serial.print(ssid);
+        Serial.print(", IP: ");
+        Serial.print(ip);
+        Serial.print(", Quality: ");
+        Serial.println(qualityStr);
+        
+        // Update the UI labels
+        if (ui_wifiLabel != NULL) {
+            lv_label_set_text(ui_wifiLabel, ssid.c_str());
+        }
+        
+        if (ui_ipLabel != NULL) {
+            lv_label_set_text(ui_ipLabel, ip.c_str());
+        }
+        
+        if (ui_wifiQualityLabel != NULL) {
+            lv_label_set_text(ui_wifiQualityLabel, qualityStr.c_str());
+        }
+        
+        lastWiFiUpdateTime = millis();
+    } else {
+        // WiFi is not connected - update UI accordingly
+        if (ui_wifiLabel != NULL) {
+            lv_label_set_text(ui_wifiLabel, "Not Connected");
+        }
+        
+        if (ui_ipLabel != NULL) {
+            lv_label_set_text(ui_ipLabel, "--.--.--.--");
+        }
+        
+        if (ui_wifiQualityLabel != NULL) {
+            lv_label_set_text(ui_wifiQualityLabel, LV_SYMBOL_WIFI "  --");
+        }
+    }
+}
+
+// WiFi status update timer callback
+void wifiStatusTimerCallback(lv_timer_t * timer) {
+    updateWiFiStatusUI();
+}
+
+// Start all periodic tasks
+void startPeriodicTasks() {
+    // Create a timer that runs every 10 seconds (10000ms) for WiFi status updates
+    wifi_status_timer = lv_timer_create(wifiStatusTimerCallback, 10000, NULL);
+    
+    // Run the first update immediately
+    updateWiFiStatusUI();
+}
+
 void loop()
 {
     static uint32_t last_print = 0;
@@ -528,11 +607,11 @@ void loop()
     static uint32_t last_tick = 0;
     uint32_t now = millis();
     
-    // // Update LVGL tick counter - required for proper timing
-    // if(now - last_tick > 0) {
-    //     lv_tick_inc(now - last_tick);
-    //     last_tick = now;
-    // }
+    // Update LVGL tick counter - required for proper timing
+    if(now - last_tick > 0) {
+        lv_tick_inc(now - last_tick);
+        last_tick = now;
+    }
     
     // Handle LVGL tasks
     lv_timer_handler();
@@ -599,5 +678,3 @@ void loop()
     // Small delay to prevent watchdog reset
     delay(2);
 }
-
-
