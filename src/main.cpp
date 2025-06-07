@@ -18,7 +18,7 @@ lv_indev_t * touch_indev = NULL;
 
 #include <ui.h>
 
-#define GFX_BL 10
+#define GFX_BL 44
 
 /*Don't forget to set Sketchbook location in File/Preferences to the path of your UI project (the parent folder of this INO file)*/
 
@@ -140,7 +140,7 @@ void setup()
     gfx->begin();
     gfx->fillScreen(BLACK);
     pinMode(GFX_BL, OUTPUT);
-    digitalWrite(GFX_BL, HIGH); // Turn on backlight
+    digitalWrite(GFX_BL, LOW); // Turn on backlight
     if (Serial) Serial.println("Display initialized");
     
     // Print LVGL version
