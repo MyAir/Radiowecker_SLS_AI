@@ -9,6 +9,7 @@
 #include <ArduinoJson.h>
 #include <time.h>
 #include "touch.h"
+#include "UIManager.h"
 
 // Use the debug macros from touch.h
 
@@ -25,6 +26,7 @@ void updateDateUI();
 void startPeriodicTasks();
 void wifiStatusTimerCallback(lv_timer_t *timer);
 void timeUpdateTimerCallback(lv_timer_t *timer);
+void envSensorTimerCallback(lv_timer_t *timer);
 
 // LVGL display and input device
 lv_display_t * display = NULL;
@@ -33,12 +35,16 @@ lv_indev_t * touch_indev = NULL;
 // LVGL timers
 lv_timer_t * wifi_status_timer = NULL;
 lv_timer_t * time_update_timer = NULL;
+lv_timer_t * env_sensor_timer = NULL;
 
 // Time tracking
 int last_update_hour = -1;
 
 // Variable to store last WiFi status update time
 unsigned long lastWiFiUpdateTime = 0;
+
+// UIManager instance
+UIManager* uiManager = nullptr;
 
 #include <ui.h>
 
@@ -335,8 +341,23 @@ void setup()
 #endif
     }
 
-    // Initialize the UI
+    // Initialize I2C bus for sensors once, before UIManager initialization
+    Wire.begin(17, 18, 100000);  // SDA=17, SCL=18, frequency=100kHz
+    
+    // Initialize LVGL user interface
     ui_init();
+    
+    // Initialize UIManager and sensors
+    uiManager = UIManager::getInstance();
+    if (uiManager->initSensors()) {
+#if UI_DEBUG
+        Serial.println("Environmental sensors initialized successfully");
+#endif
+    } else {
+#if UI_DEBUG
+        Serial.println("Failed to initialize one or more environmental sensors");
+#endif
+    }
     Serial.println("UI initialized");
     
     // Start periodic tasks (WiFi status updates, etc.)
@@ -619,6 +640,13 @@ void wifiStatusTimerCallback(lv_timer_t * timer) {
     updateWiFiStatusUI();
 }
 
+// Environmental sensor update timer callback
+void envSensorTimerCallback(lv_timer_t * timer) {
+    if (uiManager) {
+        uiManager->updateEnvironmentalData();
+    }
+}
+
 // Update time on the main screen
 void updateTimeUI() {
     struct tm timeinfo;
@@ -692,10 +720,18 @@ void startPeriodicTasks() {
     // Create a timer that runs every second (1000ms) for time updates
     time_update_timer = lv_timer_create(timeUpdateTimerCallback, 1000, NULL);
     
+    // Create a timer that runs every 30 seconds (30000ms) for environmental sensor updates
+    env_sensor_timer = lv_timer_create(envSensorTimerCallback, 30000, NULL);
+    
     // Run the first updates immediately
     updateWiFiStatusUI();
     updateTimeUI();
     updateDateUI();
+    
+    // Immediately run environment sensor update
+    if (uiManager) {
+        uiManager->updateEnvironmentalData();
+    }
 }
 
 void loop()
