@@ -3,6 +3,8 @@
 #include <lvgl.h>
 #include <Arduino_GFX_Library.h>
 #include <Wire.h>
+#include <SD.h>
+#include <SPI.h>
 #include "touch.h"
 
 // Use the debug macros from touch.h
@@ -11,6 +13,7 @@
 void my_log_cb(lv_log_level_t level, const char *buf);
 void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map);
 void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data);
+void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels);
 
 // LVGL display and input device
 lv_display_t * display = NULL;
@@ -19,6 +22,22 @@ lv_indev_t * touch_indev = NULL;
 #include <ui.h>
 
 #define GFX_BL 44
+
+// SD Card pins
+#define SD_SCK  12
+#define SD_MISO 13
+#define SD_MOSI 11
+#define SD_CS   10
+
+// LVGL filesystem drive letter
+#define DRIVE_LETTER 'S'
+
+// Forward declare SD card filesystem driver functions for LVGL
+static void * fs_open(lv_fs_drv_t * drv, const char * path, lv_fs_mode_t mode);
+static lv_fs_res_t fs_close(lv_fs_drv_t * drv, void * file_p);
+static lv_fs_res_t fs_read(lv_fs_drv_t * drv, void * file_p, void * buf, uint32_t btr, uint32_t * br);
+static lv_fs_res_t fs_seek(lv_fs_drv_t * drv, void * file_p, uint32_t pos, lv_fs_whence_t whence);
+static lv_fs_res_t fs_tell(lv_fs_drv_t * drv, void * file_p, uint32_t * pos_p);
 
 /*Don't forget to set Sketchbook location in File/Preferences to the path of your UI project (the parent folder of this INO file)*/
 
@@ -62,6 +81,41 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 
     gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px_map, w, h);
     lv_display_flush_ready(disp);
+}
+
+// List directory contents on SD card with indentation for nested folders
+void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels) {
+    File root = fs.open(dirname);
+    if (!root) {
+        Serial.println("Failed to open directory");
+        return;
+    }
+    if (!root.isDirectory()) {
+        Serial.println("Not a directory");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while (file) {
+        // Create proper indentation based on directory level
+        for (uint8_t i = 0; i < levels; i++) {
+            Serial.print("  ");
+        }
+        
+        Serial.print(file.name());
+        if (file.isDirectory()) {
+            Serial.println("/");
+            if (levels < 3) { // Limit recursion to 3 levels deep
+                listDirectory(fs, file.path(), levels + 1);
+            }
+        } else {
+            // Print file size
+            Serial.print("  (");
+            Serial.print(file.size());
+            Serial.println(" bytes)");
+        }
+        file = root.openNextFile();
+    }
 }
 
 /* Read the touchpad */
@@ -223,10 +277,124 @@ void setup()
 #endif
     }
 
+    // Initialize SD Card
+    Serial.println("Initializing SD card...");
+    SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
+    if (!SD.begin(SD_CS)) {
+        Serial.println("SD Card initialization failed!");
+    } else {
+        Serial.println("SD Card initialization successful!");
+        
+        // Initialize LVGL filesystem driver for SD card
+        static lv_fs_drv_t fs_drv;
+        lv_fs_drv_init(&fs_drv);
+
+        // Set up driver letter and callbacks
+        fs_drv.letter = DRIVE_LETTER;
+        fs_drv.cache_size = 0;
+        
+        fs_drv.open_cb = fs_open;
+        fs_drv.close_cb = fs_close;
+        fs_drv.read_cb = fs_read;
+        fs_drv.seek_cb = fs_seek;
+        fs_drv.tell_cb = fs_tell;
+
+        // Register the driver
+        lv_fs_drv_register(&fs_drv);
+        Serial.printf("LVGL filesystem driver registered with letter '%c:'", DRIVE_LETTER);
+        Serial.println();
+        
+#ifdef SD_DEBUG
+        // List files on SD card
+        Serial.println("Files on SD Card:");
+        listDirectory(SD, "/", 0);
+#endif
+    }
+
     // Initialize the UI
     ui_init();
 
     Serial.println("Setup done");
+}
+
+// LVGL Filesystem Driver Functions
+
+static void * fs_open(lv_fs_drv_t * drv, const char * path, lv_fs_mode_t mode) {
+    lv_fs_res_t res = LV_FS_RES_NOT_IMP;
+    void * f = NULL;
+    
+    if(mode == LV_FS_MODE_RD) {
+        // Remove drive letter from path (e.g. S:/foo.txt -> /foo.txt)
+        if(path[0] == DRIVE_LETTER && path[1] == ':') {
+            path += 2;
+        }
+        
+        // Open the file for reading
+        File file = SD.open(path);
+        if(file) {
+            // Allocate memory to store File object pointer
+            f = malloc(sizeof(File));
+            if(f) {
+                memcpy(f, &file, sizeof(File));
+                res = LV_FS_RES_OK;
+            } else {
+                file.close();
+            }
+        }
+    }
+    
+    if(res != LV_FS_RES_OK) {
+        return NULL;
+    }
+    return f;
+}
+
+static lv_fs_res_t fs_close(lv_fs_drv_t * drv, void * file_p) {
+    if(file_p) {
+        File * fp = (File*)file_p;
+        fp->close();
+        free(file_p);
+    }
+    return LV_FS_RES_OK;
+}
+
+static lv_fs_res_t fs_read(lv_fs_drv_t * drv, void * file_p, void * buf, uint32_t btr, uint32_t * br) {
+    if(file_p == NULL) return LV_FS_RES_INV_PARAM;
+    
+    File * fp = (File*)file_p;
+    *br = fp->read((uint8_t*)buf, btr);
+    return (*br <= 0) ? LV_FS_RES_UNKNOWN : LV_FS_RES_OK;
+}
+
+static lv_fs_res_t fs_seek(lv_fs_drv_t * drv, void * file_p, uint32_t pos, lv_fs_whence_t whence) {
+    if(file_p == NULL) return LV_FS_RES_INV_PARAM;
+    
+    File * fp = (File*)file_p;
+    
+    SeekMode mode;
+    if(whence == LV_FS_SEEK_SET) {
+        mode = SeekSet;
+    } else if(whence == LV_FS_SEEK_CUR) {
+        mode = SeekCur;
+    } else if(whence == LV_FS_SEEK_END) {
+        mode = SeekEnd;
+    } else {
+        return LV_FS_RES_INV_PARAM;
+    }
+    
+    if(fp->seek(pos, mode)) {
+        return LV_FS_RES_OK;
+    } else {
+        return LV_FS_RES_UNKNOWN;
+    }
+}
+
+static lv_fs_res_t fs_tell(lv_fs_drv_t * drv, void * file_p, uint32_t * pos_p) {
+    if(file_p == NULL) return LV_FS_RES_INV_PARAM;
+    
+    File * fp = (File*)file_p;
+    *pos_p = fp->position();
+    return LV_FS_RES_OK;
 }
 
 void loop()
