@@ -402,7 +402,7 @@ void ui_homeScreen_screen_init(void)
     lv_label_set_text(ui_currentWeatherTitle, "Aktuelles Wetter");
 
     ui_Image1 = lv_image_create(ui_currentWeatherPanel);
-    lv_image_set_src(ui_Image1, &ui_img_1050618205);
+    lv_image_set_src(ui_Image1, &ui_img_weather_icons_02d_png);
     lv_obj_set_width(ui_Image1, LV_SIZE_CONTENT);   /// 50
     lv_obj_set_height(ui_Image1, LV_SIZE_CONTENT);    /// 50
     lv_obj_set_x(ui_Image1, 0);
@@ -465,7 +465,7 @@ void ui_homeScreen_screen_init(void)
     lv_label_set_text(ui_morningTitle, "Vormittag");
 
     ui_morningIcon = lv_image_create(ui_morningPanel);
-    lv_image_set_src(ui_morningIcon, &ui_img_1050618205);
+    lv_image_set_src(ui_morningIcon, &ui_img_weather_icons_02d_png);
     lv_obj_set_width(ui_morningIcon, LV_SIZE_CONTENT);   /// 50
     lv_obj_set_height(ui_morningIcon, LV_SIZE_CONTENT);    /// 50
     lv_obj_set_x(ui_morningIcon, 0);
@@ -513,7 +513,7 @@ void ui_homeScreen_screen_init(void)
     lv_label_set_text(ui_afternoonTitle, "Nachmittag");
 
     ui_afternoonIcon = lv_image_create(ui_afternoonPanel);
-    lv_image_set_src(ui_afternoonIcon, &ui_img_1050618205);
+    lv_image_set_src(ui_afternoonIcon, &ui_img_weather_icons_02d_png);
     lv_obj_set_width(ui_afternoonIcon, LV_SIZE_CONTENT);   /// 50
     lv_obj_set_height(ui_afternoonIcon, LV_SIZE_CONTENT);    /// 50
     lv_obj_set_x(ui_afternoonIcon, 0);
@@ -561,7 +561,7 @@ void ui_homeScreen_screen_init(void)
     lv_label_set_text(ui_nightTitle, "Nacht");
 
     ui_nightIcon = lv_image_create(ui_nightPanel);
-    lv_image_set_src(ui_nightIcon, &ui_img_1050618205);
+    lv_image_set_src(ui_nightIcon, &ui_img_weather_icons_02d_png);
     lv_obj_set_width(ui_nightIcon, LV_SIZE_CONTENT);   /// 50
     lv_obj_set_height(ui_nightIcon, LV_SIZE_CONTENT);    /// 50
     lv_obj_set_x(ui_nightIcon, 0);

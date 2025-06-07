@@ -29,7 +29,24 @@ extern "C" {
 extern lv_obj_t * ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
-LV_IMG_DECLARE(ui_img_1050618205);    // assets/weather_icons - 32bpp/02d.png
+LV_IMG_DECLARE(ui_img_weather_icons_02d_png);    // assets/weather_icons/02d.png
+LV_IMG_DECLARE(ui_img_weather_icons_01d_png);    // assets/weather_icons/01d.png
+LV_IMG_DECLARE(ui_img_weather_icons_01n_png);    // assets/weather_icons/01n.png
+LV_IMG_DECLARE(ui_img_weather_icons_02n_png);    // assets/weather_icons/02n.png
+LV_IMG_DECLARE(ui_img_weather_icons_03d_png);    // assets/weather_icons/03d.png
+LV_IMG_DECLARE(ui_img_weather_icons_03n_png);    // assets/weather_icons/03n.png
+LV_IMG_DECLARE(ui_img_weather_icons_04d_png);    // assets/weather_icons/04d.png
+LV_IMG_DECLARE(ui_img_weather_icons_04n_png);    // assets/weather_icons/04n.png
+LV_IMG_DECLARE(ui_img_weather_icons_09d_png);    // assets/weather_icons/09d.png
+LV_IMG_DECLARE(ui_img_weather_icons_09n_png);    // assets/weather_icons/09n.png
+LV_IMG_DECLARE(ui_img_weather_icons_10d_png);    // assets/weather_icons/10d.png
+LV_IMG_DECLARE(ui_img_weather_icons_10n_png);    // assets/weather_icons/10n.png
+LV_IMG_DECLARE(ui_img_weather_icons_11d_png);    // assets/weather_icons/11d.png
+LV_IMG_DECLARE(ui_img_weather_icons_11n_png);    // assets/weather_icons/11n.png
+LV_IMG_DECLARE(ui_img_weather_icons_13d_png);    // assets/weather_icons/13d.png
+LV_IMG_DECLARE(ui_img_weather_icons_13n_png);    // assets/weather_icons/13n.png
+LV_IMG_DECLARE(ui_img_weather_icons_50d_png);    // assets/weather_icons/50d.png
+LV_IMG_DECLARE(ui_img_weather_icons_50n_png);    // assets/weather_icons/50n.png
 
 // FONTS
 LV_FONT_DECLARE(ui_font_ms14m);
