@@ -25,18 +25,18 @@ void touch_init() {
     TOUCH_LOG_LN("Initializing GT911 touch controller...");
     
     // Initialize I2C with 400kHz for faster response
-    Wire.begin(TOUCH_GT911_SDA, TOUCH_GT911_SCL);
-    Wire.setClock(400000);
-    TOUCH_LOG_LN("I2C initialized");
+    // Wire.begin(TOUCH_GT911_SDA, TOUCH_GT911_SCL);
+    // Wire.setClock(400000);
+    // TOUCH_LOG_LN("I2C initialized");
     
     // Reset the touch controller if reset pin is available
     if (TOUCH_GT911_RST >= 0) {
         TOUCH_LOG_LN("Resetting touch controller");
         pinMode(TOUCH_GT911_RST, OUTPUT);
         digitalWrite(TOUCH_GT911_RST, LOW);
-        delay(10);
+        delay(500);
         digitalWrite(TOUCH_GT911_RST, HIGH);
-        delay(50);
+        delay(500);
     }
     
     // Initialize the GT911 with the specified I2C address
@@ -47,8 +47,8 @@ void touch_init() {
     TOUCH_LOG_LN("GT911 initialized");
     
     // Set rotation (0-3, where 3 is 270° rotation if needed)
-    gt911.setRotation(3);
-    TOUCH_LOG_LN("Touch rotation set to 3");
+    gt911.setRotation(ROTATION_NORMAL);
+    TOUCH_LOG_LN("Touch rotation set to normal");
     
     touch_initialized = true;
 }
