@@ -36,7 +36,7 @@
 
 # PlatformIO Commands to use
 - PlatformIO: `pio run` to build the code
-- PlatformIO: `pio run -t upload` to upload the code to the ESP32-S3
+- PlatformIO: `try { taskkill /F /IM pio.exe /T > $null 2>&1 } catch { } ; pio run -t upload` to upload the code to the ESP32-S3
 - PlatformIO: `pio run -t monitor` to monitor the output of the ESP32-S3
 - PlatformIO: `pio run -t clean` to clean the build directory
 - PlatformIO: Use Ctrl+C to stop the monitor after you finished analyzing the output and before uploading new code

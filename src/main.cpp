@@ -1,18 +1,17 @@
-// Core Arduino and system includes
 #include <Arduino.h>
 #include <lvgl.h>
 #include <Arduino_GFX_Library.h>
-#include <SPIFFS.h>
 #include <SD.h>
 #include <SPI.h>
+#include <Wire.h>
 #include <WiFi.h>
-#include <ArduinoJson.h>
 #include <time.h>
-#include "touch.h"
+#include <ArduinoJson.h>
+#include "../lib/ui/ui.h"
 #include "UIManager.h"
+#include "touch.h"
+#include "ConfigManager.h"
 #include "debug_config.h"
-
-// Use the debug macros from touch.h
 
 // Forward declarations
 void my_log_cb(lv_log_level_t level, const char *buf);
@@ -20,9 +19,8 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map);
 void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data);
 void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels);
 void connectToWiFi();
-bool parseAndApplyConfig(JsonDocument& doc);
-bool initializeWeatherFromConfig(JsonDocument& doc);
-void syncTimeFromNTP(JsonDocument& config);
+void initializeWeatherService();
+void syncTimeFromNTP();
 void updateWiFiStatusUI();
 void startPeriodicTasks();
 void wifiStatusTimerCallback(lv_timer_t *timer);
@@ -366,165 +364,148 @@ void setup()
     Serial.println("Setup done");
 }
 void connectToWiFi() {
-    Serial.println("Reading WiFi credentials from config.json...");
+#if WIFI_DEBUG
+    Serial.println("Reading WiFi credentials from config...");
+#endif
     
-    // Check if config file exists
-    if (!SD.exists("/config.json")) {
-        Serial.println("Error: config.json not found on SD card!");
+    ConfigManager* configManager = ConfigManager::getInstance();
+    
+    // Initialize the configuration manager
+    if (!configManager->isConfigLoaded()) {
+        if (!configManager->initConfig()) {
+#if CONFIG_DEBUG
+            Serial.println("Error: Failed to initialize configuration manager");
+#endif
+            return;
+        }
+    }
+    
+    // Get WiFi credentials from config
+    String wifiSSID, wifiPassword;
+    if (!configManager->getWiFiCredentials(wifiSSID, wifiPassword)) {
+#if CONFIG_DEBUG
+        Serial.println("Error: WiFi credentials not found or incomplete!");
+#endif
         return;
     }
-    
-    Serial.println("Loading config from SD card...");
-    File configFile = SD.open("/config.json", FILE_READ);
-    if (!configFile) {
-        Serial.println("Error: Failed to open config.json on SD card!");
-        return;
-    }
-    
-    size_t size = configFile.size();
-    Serial.printf("Successfully opened config.json (%u bytes)\n", size);
-    
-    if (size == 0) {
-        Serial.println("Error: config.json is empty!");
-        configFile.close();
-        return;
-    }
-    
-    // Allocate JsonDocument with appropriate capacity
-    DynamicJsonDocument doc(4096);
-    
-    // Read file and parse JSON directly
-    DeserializationError error = deserializeJson(doc, configFile);
-    configFile.close();
-    
-    if (error) {
-        Serial.print("Error parsing JSON: ");
-        Serial.println(error.c_str());
-        return;
-    }
-    
-    // For debug, print the parsed JSON document
-    Serial.println("Parsed JSON document:");
-    serializeJsonPretty(doc, Serial);
-    Serial.println();
-    
-    if (!parseAndApplyConfig(doc)) {
-        Serial.println("Failed to parse and apply config");
-    }
-}
-
-bool parseAndApplyConfig(JsonDocument& doc) {
-    // Extract WiFi credentials
-    if (!doc.containsKey("wifi") || !doc["wifi"].containsKey("ssid") || !doc["wifi"].containsKey("password")) {
-        Serial.println("Error: WiFi credentials not found or incomplete in config.json!");
-        return false;
-    }
-    
-    String wifiSSID = doc["wifi"]["ssid"].as<String>();
-    String wifiPassword = doc["wifi"]["password"].as<String>();
     
     // Connect to WiFi
+#if WIFI_DEBUG
     Serial.printf("Connecting to WiFi SSID: %s\n", wifiSSID.c_str());
+#endif
+    
     WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
     
     int timeout = 0;
     while (WiFi.status() != WL_CONNECTED && timeout < 20) {
         delay(500);
+#if WIFI_DEBUG
         Serial.print(".");
+#endif
         timeout++;
     }
     
     if (WiFi.status() != WL_CONNECTED) {
+#if WIFI_DEBUG
         Serial.println("\nFailed to connect to WiFi!");
-        return false;
+#endif
+        return;
     }
     
+#if WIFI_DEBUG
     Serial.println("\nWiFi connected! IP address: " + WiFi.localIP().toString());
+#endif
     
-    // Time sync after WiFi is connected
-    syncTimeFromNTP(doc);
+    // Sync time from NTP after WiFi is connected
+    syncTimeFromNTP();
     
-    // Check if UIManager is initialized
+    // Check if UIManager is initialized before initializing weather
     if (!uiManager) {
+#if CONFIG_DEBUG
         Serial.println("Error: UIManager not initialized!");
-        return false;
+#endif
+        return;
     }
     
-    // Process weather configuration
-    return initializeWeatherFromConfig(doc);
+    // Initialize weather service with configuration
+    initializeWeatherService();
 }
 
-bool initializeWeatherFromConfig(JsonDocument& doc) {
-    // Check if weather configuration exists
-    if (!doc.containsKey("weather")) {
-        Serial.println("No weather configuration found in config.json");
-        return false;
+void initializeWeatherService() {
+    ConfigManager* configManager = ConfigManager::getInstance();
+    
+    // Extract weather configuration
+    String apiKey;
+    float latitude, longitude;
+    String units, language;
+    
+    if (!configManager->getWeatherSettings(apiKey, latitude, longitude, units, language)) {
+#if WEATHER_DEBUG
+        Serial.println("No weather configuration found or configuration is incomplete");
+#endif
+        return;
     }
     
-    Serial.println("Weather configuration found, parsing...");
-    
-    // Extract weather configuration with appropriate defaults
-    String apiKey = doc["weather"]["appid"].as<String>();
-    float latitude = doc["weather"]["lat"] | 0.0f;
-    float longitude = doc["weather"]["lon"] | 0.0f;
-    String units = doc["weather"]["units"] | "metric";
-    String language = doc["weather"]["lang"] | "de";
-    
-    // Log extracted values
-    Serial.println("Extracted weather configuration:");
+#if WEATHER_DEBUG
+    Serial.println("Weather configuration found, initializing service...");
     Serial.printf("API Key: [%s]\n", apiKey.length() > 0 ? apiKey.c_str() : "EMPTY");
     Serial.printf("Location: [%.6f, %.6f]\n", latitude, longitude);
     Serial.printf("Units: [%s], Language: [%s]\n", units.c_str(), language.c_str());
-    
-    // Validate configuration
-    if (apiKey.isEmpty() || latitude == 0.0f || longitude == 0.0f) {
-        Serial.println("Weather configuration is incomplete, cannot initialize service");
-        return false;
-    }
+#endif
     
     // Initialize weather service
-    Serial.println("Initializing WeatherService with extracted configuration...");
     if (uiManager->initWeatherService(apiKey, latitude, longitude, units, language)) {
+#if WEATHER_DEBUG
         Serial.println("WeatherService initialized successfully");
-        return true;
+#endif
     } else {
+#if WEATHER_DEBUG
         Serial.println("Failed to initialize WeatherService");
-        return false;
+#endif
     }
 }
 
 // NTP time synchronization function
-void syncTimeFromNTP(JsonDocument& config) {
+void syncTimeFromNTP() {
+#if TIME_DEBUG
     Serial.println("Synchronizing time from NTP...");
+#endif
     
-    // Extract NTP server and timezone from config
-    const char* ntpServer1 = config["ntp"]["server1"] | "pool.ntp.org";
-    const char* ntpServer2 = config["ntp"]["server2"] | "time.nist.gov";
-    const char* timezone = config["ntp"]["timezone"] | "CET-1CEST,M3.5.0,M10.5.0/3";
+    ConfigManager* configManager = ConfigManager::getInstance();
     
-    Serial.print("NTP Server 1: ");
-    Serial.println(ntpServer1);
-    Serial.print("NTP Server 2: ");
-    Serial.println(ntpServer2);
+    // Get NTP settings from config
+    String ntpServer, timezone;
+    configManager->getNTPSettings(ntpServer, timezone);
+    
+#if TIME_DEBUG
+    Serial.print("NTP Server: ");
+    Serial.println(ntpServer);
     Serial.print("Timezone: ");
     Serial.println(timezone);
+#endif
     
-    // Configure time with NTP servers and timezone
-    configTzTime(timezone, ntpServer1, ntpServer2);
+    // Configure time with NTP server and timezone
+    configTzTime(timezone.c_str(), ntpServer.c_str(), "time.nist.gov");
     
     // Wait for time to be set
     struct tm timeinfo;
     int retry = 0;
     const int maxRetries = 10;
     
+#if TIME_DEBUG
     Serial.println("Waiting for NTP synchronization");
+#endif
+
     while (!getLocalTime(&timeinfo) && retry < maxRetries) {
+#if TIME_DEBUG
         Serial.print(".");
+#endif
         delay(1000);
         retry++;
     }
     
     if (retry < maxRetries) {
+#if TIME_DEBUG
         Serial.println();
         Serial.println("Time synchronized!");
         
@@ -533,9 +514,12 @@ void syncTimeFromNTP(JsonDocument& config) {
         strftime(timeStr, sizeof(timeStr), "%A, %B %d %Y %H:%M:%S", &timeinfo);
         Serial.print("Current time: ");
         Serial.println(timeStr);
+#endif
     } else {
+#if TIME_DEBUG
         Serial.println();
         Serial.println("Failed to synchronize time!");
+#endif
     }
 }
 
