@@ -14,6 +14,8 @@ private:
     
     ConfigManager();
     bool loadConfigFromSD();
+    void setDefaultConfig();
+    bool parseConfig(DynamicJsonDocument& doc);
     
 public:
     static ConfigManager* getInstance();
@@ -39,6 +41,9 @@ public:
     
     // Debug utility
     void printConfig();
+    
+    // Config management
+    bool saveConfig();
 };
 
 #endif // CONFIG_MANAGER_H
