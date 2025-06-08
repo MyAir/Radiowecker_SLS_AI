@@ -43,7 +43,9 @@ lv_obj_t * uic_tempLabel;
 lv_obj_t * uic_ContTempTitle;
 lv_obj_t * uic_ContSensorTitles;
 lv_obj_t * uic_sensorPanel;
-lv_obj_t * uic_Uhrzeit;
+lv_obj_t * uic_NextAlarm;
+lv_obj_t * uic_CurrentTime;
+lv_obj_t * uic_CurrentDate;
 lv_obj_t * uic_timePanel;
 lv_obj_t * uic_wifiLabel;
 lv_obj_t * uic_wifiQualityLabel;
@@ -58,9 +60,9 @@ lv_obj_t * ui_ipLabel;
 lv_obj_t * ui_wifiQualityLabel;
 lv_obj_t * ui_wifiLabel;
 lv_obj_t * ui_timePanel;
-lv_obj_t * ui_Datum;
-lv_obj_t * ui_Uhrzeit;
-lv_obj_t * ui_Label3;
+lv_obj_t * ui_CurrentDate;
+lv_obj_t * ui_CurrentTime;
+lv_obj_t * ui_NextAlarm;
 lv_obj_t * ui_sensorPanel;
 lv_obj_t * ui_ContSensorTitles;
 lv_obj_t * ui_ContTempTitle;
@@ -112,7 +114,7 @@ void ui_event_Container1(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
 
     if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(&ui_SettingsScreen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 500, 0, &ui_SettingsScreen_screen_init);
+        _ui_screen_change(&ui_MenuScreen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 500, 0, &ui_MenuScreen_screen_init);
     }
 }
 
@@ -185,26 +187,26 @@ void ui_homeScreen_screen_init(void)
     lv_obj_set_style_text_color(ui_timePanel, lv_color_hex(0x7B1010), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_timePanel, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui_Datum = lv_label_create(ui_timePanel);
-    lv_obj_set_width(ui_Datum, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_Datum, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_Datum, LV_ALIGN_TOP_MID);
-    lv_label_set_text(ui_Datum, "Donnerstag 31.03.2025");
-    lv_obj_set_style_text_font(ui_Datum, &lv_font_montserrat_32, LV_PART_MAIN | LV_STATE_DEFAULT);
+    ui_CurrentDate = lv_label_create(ui_timePanel);
+    lv_obj_set_width(ui_CurrentDate, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_CurrentDate, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_CurrentDate, LV_ALIGN_TOP_MID);
+    lv_label_set_text(ui_CurrentDate, "Donnerstag 31.03.2025");
+    lv_obj_set_style_text_font(ui_CurrentDate, &lv_font_montserrat_32, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui_Uhrzeit = lv_label_create(ui_timePanel);
-    lv_obj_set_width(ui_Uhrzeit, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_Uhrzeit, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_Uhrzeit, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_Uhrzeit, "22:22:22");
-    lv_obj_set_style_text_font(ui_Uhrzeit, &ui_font_ms80m, LV_PART_MAIN | LV_STATE_DEFAULT);
+    ui_CurrentTime = lv_label_create(ui_timePanel);
+    lv_obj_set_width(ui_CurrentTime, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_CurrentTime, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_CurrentTime, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_CurrentTime, "22:22:22");
+    lv_obj_set_style_text_font(ui_CurrentTime, &ui_font_ms80m, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui_Label3 = lv_label_create(ui_timePanel);
-    lv_obj_set_width(ui_Label3, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_Label3, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_Label3, LV_ALIGN_BOTTOM_MID);
-    lv_label_set_text(ui_Label3, "Naechster Alarm: Donnerstag 31.12.2025 22:22");
-    lv_obj_set_style_text_font(ui_Label3, &lv_font_montserrat_16, LV_PART_MAIN | LV_STATE_DEFAULT);
+    ui_NextAlarm = lv_label_create(ui_timePanel);
+    lv_obj_set_width(ui_NextAlarm, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_NextAlarm, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_NextAlarm, LV_ALIGN_BOTTOM_MID);
+    lv_label_set_text(ui_NextAlarm, "Naechster Alarm: Donnerstag 31.12.2025 22:22");
+    lv_obj_set_style_text_font(ui_NextAlarm, &lv_font_montserrat_16, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_sensorPanel = lv_obj_create(ui_homeScreenPanel);
     lv_obj_set_height(ui_sensorPanel, 75);
@@ -599,7 +601,9 @@ void ui_homeScreen_screen_init(void)
     uic_wifiQualityLabel = ui_wifiQualityLabel;
     uic_wifiLabel = ui_wifiLabel;
     uic_timePanel = ui_timePanel;
-    uic_Uhrzeit = ui_Uhrzeit;
+    uic_CurrentDate = ui_CurrentDate;
+    uic_CurrentTime = ui_CurrentTime;
+    uic_NextAlarm = ui_NextAlarm;
     uic_sensorPanel = ui_sensorPanel;
     uic_ContSensorTitles = ui_ContSensorTitles;
     uic_ContTempTitle = ui_ContTempTitle;
@@ -660,10 +664,12 @@ void ui_homeScreen_screen_destroy(void)
     ui_wifiLabel = NULL;
     uic_timePanel = NULL;
     ui_timePanel = NULL;
-    ui_Datum = NULL;
-    uic_Uhrzeit = NULL;
-    ui_Uhrzeit = NULL;
-    ui_Label3 = NULL;
+    uic_CurrentDate = NULL;
+    ui_CurrentDate = NULL;
+    uic_CurrentTime = NULL;
+    ui_CurrentTime = NULL;
+    uic_NextAlarm = NULL;
+    ui_NextAlarm = NULL;
     uic_sensorPanel = NULL;
     ui_sensorPanel = NULL;
     uic_ContSensorTitles = NULL;

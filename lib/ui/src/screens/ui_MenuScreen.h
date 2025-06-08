@@ -3,21 +3,22 @@
 // LVGL version: 9.2.2
 // Project name: RadioweckerAI
 
-#ifndef UI_SETTINGSSCREEN_H
-#define UI_SETTINGSSCREEN_H
+#ifndef UI_MENUSCREEN_H
+#define UI_MENUSCREEN_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// SCREEN: ui_SettingsScreen
-extern void ui_SettingsScreen_screen_init(void);
-extern void ui_SettingsScreen_screen_destroy(void);
-extern lv_obj_t * ui_SettingsScreen;
+// SCREEN: ui_MenuScreen
+extern void ui_MenuScreen_screen_init(void);
+extern void ui_MenuScreen_screen_destroy(void);
+extern lv_obj_t * ui_MenuScreen;
 extern void ui_event_Button1(lv_event_t * e);
 extern lv_obj_t * ui_Button1;
 extern lv_obj_t * ui_Label1;
 // CUSTOM VARIABLES
+extern lv_obj_t * uic_MenuScreen;
 
 #ifdef __cplusplus
 } /*extern "C"*/

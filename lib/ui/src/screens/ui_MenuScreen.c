@@ -5,7 +5,8 @@
 
 #include "../ui.h"
 
-lv_obj_t * ui_SettingsScreen;
+lv_obj_t * uic_MenuScreen;
+lv_obj_t * ui_MenuScreen;
 lv_obj_t * ui_Button1;
 lv_obj_t * ui_Label1;
 
@@ -21,14 +22,14 @@ void ui_event_Button1(lv_event_t * e)
 
 // build funtions
 
-void ui_SettingsScreen_screen_init(void)
+void ui_MenuScreen_screen_init(void)
 {
-    ui_SettingsScreen = lv_obj_create(NULL);
-    lv_obj_remove_flag(ui_SettingsScreen, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-    lv_obj_set_style_bg_color(ui_SettingsScreen, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(ui_SettingsScreen, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    ui_MenuScreen = lv_obj_create(NULL);
+    lv_obj_remove_flag(ui_MenuScreen, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    lv_obj_set_style_bg_color(ui_MenuScreen, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(ui_MenuScreen, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui_Button1 = lv_button_create(ui_SettingsScreen);
+    ui_Button1 = lv_button_create(ui_MenuScreen);
     lv_obj_set_width(ui_Button1, 100);
     lv_obj_set_height(ui_Button1, 50);
     lv_obj_add_flag(ui_Button1, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
@@ -42,15 +43,17 @@ void ui_SettingsScreen_screen_init(void)
     lv_obj_set_style_text_font(ui_Label1, &ui_font_ms14m, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_add_event_cb(ui_Button1, ui_event_Button1, LV_EVENT_ALL, NULL);
+    uic_MenuScreen = ui_MenuScreen;
 
 }
 
-void ui_SettingsScreen_screen_destroy(void)
+void ui_MenuScreen_screen_destroy(void)
 {
-    if(ui_SettingsScreen) lv_obj_del(ui_SettingsScreen);
+    if(ui_MenuScreen) lv_obj_del(ui_MenuScreen);
 
     // NULL screen variables
-    ui_SettingsScreen = NULL;
+    uic_MenuScreen = NULL;
+    ui_MenuScreen = NULL;
     ui_Button1 = NULL;
     ui_Label1 = NULL;
 

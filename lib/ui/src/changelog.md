@@ -1,6 +1,0 @@
-## New changes
-- renamed SettingsScreen to MenuScreen
-- renamed HomeScreen - TimePanel - Uhrzeit to CurrentTime
-- renamed HomeScreen - TimePanel - Datum to CurrentDate
-- renamed HomeScreen - TimePanel - Label3 to NextAlarm
-

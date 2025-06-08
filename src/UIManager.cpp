@@ -310,8 +310,8 @@ void UIManager::updateTimeUI() {
     if (getLocalTime(&timeinfo)) {
         strftime(timeString, sizeof(timeString), "%H:%M:%S", &timeinfo);
         
-        if (ui_Uhrzeit != NULL) {
-            lv_label_set_text(ui_Uhrzeit, timeString);
+        if (ui_CurrentTime != NULL) {
+            lv_label_set_text(ui_CurrentTime, timeString);
 #if TIME_DEBUG
             Serial.print("Time updated: ");
             Serial.println(timeString);
@@ -342,8 +342,8 @@ void UIManager::updateDateUI() {
                 timeinfo.tm_mon + 1, 
                 timeinfo.tm_year + 1900);
         
-        if (ui_Datum != NULL) {
-            lv_label_set_text(ui_Datum, dateString);
+        if (ui_CurrentDate != NULL) {
+            lv_label_set_text(ui_CurrentDate, dateString);
 #if TIME_DEBUG
             Serial.print("Date updated: ");
             Serial.println(dateString);
@@ -439,11 +439,11 @@ void UIManager::updateWiFiStatusUI() {
         if (ui_wifiLabel != NULL) {
             lv_label_set_text(ui_wifiLabel, ssid.c_str());
         }
-        
+
         if (ui_ipLabel != NULL) {
             lv_label_set_text(ui_ipLabel, ip.c_str());
         }
-        
+
         if (ui_wifiQualityLabel != NULL) {
             lv_label_set_text(ui_wifiQualityLabel, qualityStr.c_str());
         }
@@ -452,15 +452,16 @@ void UIManager::updateWiFiStatusUI() {
         if (ui_wifiLabel != NULL) {
             lv_label_set_text(ui_wifiLabel, "Not Connected");
         }
-        
+
         if (ui_ipLabel != NULL) {
             lv_label_set_text(ui_ipLabel, "--.--.--.--");
         }
-        
+
         if (ui_wifiQualityLabel != NULL) {
             // Show disconnected WiFi in red
             lv_label_set_text(ui_wifiQualityLabel, LV_SYMBOL_WIFI "  #FF0000 --");
         }
+
         
 #if STATUS_DEBUG
         Serial.println("WiFi not connected, updated UI accordingly");
