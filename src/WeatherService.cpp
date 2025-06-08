@@ -268,14 +268,32 @@ void WeatherService::calculateDailyForecasts() {
         return;
     }
     
-    // Get current date/time to determine which forecast periods to show
-    time_t now = time(nullptr);
-    struct tm* timeinfo = localtime(&now);
-    int currentHour = timeinfo->tm_hour;
-    int currentDay = timeinfo->tm_mday;
+    // Get current time
+    time_t now;
+    time(&now);
+    
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+    int currentHour = timeinfo.tm_hour;
+    int currentDay = timeinfo.tm_mday;
+    
+    // Get sunrise and sunset times from current weather data
+    time_t sunriseTime = currentWeather.sunrise;
+    time_t sunsetTime = currentWeather.sunset;
+    
+    struct tm sunriseInfo, sunsetInfo;
+    localtime_r(&sunriseTime, &sunriseInfo);
+    localtime_r(&sunsetTime, &sunsetInfo);
+    
+    int sunriseHour = sunriseInfo.tm_hour;
+    int sunsetHour = sunsetInfo.tm_hour;
     
     #if WEATHER_DEBUG
-    Serial.printf("Current time: %02d:%02d on day %d\n", timeinfo->tm_hour, timeinfo->tm_min, currentDay);
+    Serial.printf("Current time: %02d:%02d, day: %d\n", 
+                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday);
+    Serial.printf("Sunrise: %02d:%02d, Sunset: %02d:%02d\n", 
+                 sunriseInfo.tm_hour, sunriseInfo.tm_min, 
+                 sunsetInfo.tm_hour, sunsetInfo.tm_min);
     #endif
     
     // Initialize forecast period counters and accumulators
@@ -297,12 +315,15 @@ void WeatherService::calculateDailyForecasts() {
     // Determine target days for each period based on current time
     int morningTargetDay, afternoonTargetDay, nightTargetDay;
     
-    if (currentHour < 12) {
+    // Using noon as midday reference point
+    int middayHour = 12;
+    
+    if (currentHour < middayHour) {
         // Before noon: show today's morning (if available), afternoon and night
         morningTargetDay = currentDay;
         afternoonTargetDay = currentDay;
         nightTargetDay = currentDay;
-    } else if (currentHour < 18) {
+    } else if (currentHour < sunsetHour) {
         // Afternoon: morning is over, show next day's morning, today's afternoon and night
         morningTargetDay = currentDay + 1;
         afternoonTargetDay = currentDay;
@@ -332,24 +353,24 @@ void WeatherService::calculateDailyForecasts() {
             break;
         }
         
-        // Morning forecasts (6:00 - 11:59) for the morning target day
-        if (forecastDay == morningTargetDay && forecastHour >= 6 && forecastHour < 12) {
+        // Morning forecasts (sunrise to noon) for the morning target day
+        if (forecastDay == morningTargetDay && forecastHour >= sunriseHour && forecastHour < 12) {
             morningTempSum += hourlyForecasts[i].temp;
             morningPopSum += hourlyForecasts[i].pop;
             morningIcons.push_back(hourlyForecasts[i].weather_icon);
             morningCount++;
         }
         
-        // Afternoon forecasts (12:00 - 17:59) for the afternoon target day
-        if (forecastDay == afternoonTargetDay && forecastHour >= 12 && forecastHour < 18) {
+        // Afternoon forecasts (noon to sunset) for the afternoon target day
+        if (forecastDay == afternoonTargetDay && forecastHour >= 12 && forecastHour < sunsetHour) {
             afternoonTempSum += hourlyForecasts[i].temp;
             afternoonPopSum += hourlyForecasts[i].pop;
             afternoonIcons.push_back(hourlyForecasts[i].weather_icon);
             afternoonCount++;
         }
         
-        // Night forecasts (18:00 - 23:59) for the night target day
-        if (forecastDay == nightTargetDay && forecastHour >= 18) {
+        // Night forecasts (after sunset) for the night target day
+        if (forecastDay == nightTargetDay && forecastHour >= sunsetHour) {
             nightTempSum += hourlyForecasts[i].temp;
             nightPopSum += hourlyForecasts[i].pop;
             nightIcons.push_back(hourlyForecasts[i].weather_icon);
