@@ -6,6 +6,7 @@
 #include <Adafruit_SGP30.h>
 #include <Adafruit_SHT31.h>
 #include <WiFi.h>
+#include "WeatherService.h"
 
 // Baseline management for SGP30 sensor
 #define SGP30_BASELINE_INTERVAL_MS 3600000  // Every hour (in milliseconds)
@@ -44,6 +45,9 @@ private:
     
     // Time tracking for internal use
     int hourChangeTracking = -1;
+    
+    // Weather update tracking
+    unsigned long lastWeatherUpdateTime = 0;
     
     // SGP30 baseline management
     unsigned long lastBaselineTime = 0;
@@ -92,6 +96,12 @@ public:
     
     // WiFi status tracking
     bool hasWiFiStatusChanged();
+    
+    // Weather service methods
+    bool initWeatherService(const String& apiKey, float latitude, float longitude, 
+                          const String& units = "metric", const String& language = "de");
+    void updateWeatherData();
+    unsigned long getLastWeatherUpdateTime() { return lastWeatherUpdateTime; }
 };
 
 #endif // UIMANAGER_H

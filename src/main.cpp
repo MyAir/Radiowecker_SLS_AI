@@ -20,12 +20,15 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map);
 void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data);
 void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels);
 void connectToWiFi();
-void syncTimeFromNTP(DynamicJsonDocument& config);
+bool parseAndApplyConfig(JsonDocument& doc);
+bool initializeWeatherFromConfig(JsonDocument& doc);
+void syncTimeFromNTP(JsonDocument& config);
 void updateWiFiStatusUI();
 void startPeriodicTasks();
 void wifiStatusTimerCallback(lv_timer_t *timer);
 void timeUpdateTimerCallback(lv_timer_t *timer);
 void envSensorTimerCallback(lv_timer_t *timer);
+void weatherUpdateTimerCallback(lv_timer_t *timer);
 
 // LVGL display and input device
 lv_display_t * display = NULL;
@@ -35,6 +38,7 @@ lv_indev_t * touch_indev = NULL;
 lv_timer_t * wifi_status_timer = NULL;
 lv_timer_t * time_update_timer = NULL;
 lv_timer_t * env_sensor_timer = NULL;
+lv_timer_t * weather_update_timer = NULL;
 
 // Variable to store last WiFi status update time
 unsigned long lastWiFiUpdateTime = 0;
@@ -327,9 +331,6 @@ void setup()
         Serial.printf("LVGL filesystem driver registered with letter '%c:'", DRIVE_LETTER);
         Serial.println();
         
-        // Connect to WiFi using credentials from config.json
-        connectToWiFi();
-        
 #if SD_DEBUG
         // List files on SD card
         Serial.println("Files on SD Card:");
@@ -356,83 +357,144 @@ void setup()
     }
     Serial.println("UI initialized");
     
+    // Now that UI is initialized, connect to WiFi using credentials from config.json
+    connectToWiFi();
+    
     // Start periodic tasks (WiFi status updates, etc.)
     startPeriodicTasks();
 
     Serial.println("Setup done");
 }
-
-// Connect to WiFi using credentials from config.json on SD card
 void connectToWiFi() {
     Serial.println("Reading WiFi credentials from config.json...");
     
-    // Check if config file exists on SD card
+    // Check if config file exists
     if (!SD.exists("/config.json")) {
         Serial.println("Error: config.json not found on SD card!");
         return;
     }
     
-    // Open config.json file
+    Serial.println("Loading config from SD card...");
     File configFile = SD.open("/config.json", FILE_READ);
     if (!configFile) {
-        Serial.println("Error: Failed to open config.json");
+        Serial.println("Error: Failed to open config.json on SD card!");
         return;
     }
     
-    // Allocate a buffer to store contents of the file
-    // We need a larger capacity for the JSON document - 4KB should be plenty
-    const size_t capacity = 4096;
-    DynamicJsonDocument doc(capacity);
+    size_t size = configFile.size();
+    Serial.printf("Successfully opened config.json (%u bytes)\n", size);
     
-    // Parse JSON
+    if (size == 0) {
+        Serial.println("Error: config.json is empty!");
+        configFile.close();
+        return;
+    }
+    
+    // Allocate JsonDocument with appropriate capacity
+    DynamicJsonDocument doc(4096);
+    
+    // Read file and parse JSON directly
     DeserializationError error = deserializeJson(doc, configFile);
     configFile.close();
     
-    // Check for parsing errors
     if (error) {
         Serial.print("Error parsing JSON: ");
         Serial.println(error.c_str());
         return;
     }
     
-    // Extract WiFi credentials
-    const char* ssid = doc["wifi"]["ssid"];
-    const char* password = doc["wifi"]["password"];
+    // For debug, print the parsed JSON document
+    Serial.println("Parsed JSON document:");
+    serializeJsonPretty(doc, Serial);
+    Serial.println();
     
-    if (!ssid || !password) {
-        Serial.println("Error: WiFi credentials not found in config.json");
-        return;
+    if (!parseAndApplyConfig(doc)) {
+        Serial.println("Failed to parse and apply config");
     }
+}
+
+bool parseAndApplyConfig(JsonDocument& doc) {
+    // Extract WiFi credentials
+    if (!doc.containsKey("wifi") || !doc["wifi"].containsKey("ssid") || !doc["wifi"].containsKey("password")) {
+        Serial.println("Error: WiFi credentials not found or incomplete in config.json!");
+        return false;
+    }
+    
+    String wifiSSID = doc["wifi"]["ssid"].as<String>();
+    String wifiPassword = doc["wifi"]["password"].as<String>();
     
     // Connect to WiFi
-    Serial.print("Connecting to WiFi SSID: ");
-    Serial.println(ssid);
+    Serial.printf("Connecting to WiFi SSID: %s\n", wifiSSID.c_str());
+    WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
     
-    WiFi.begin(ssid, password);
-    
-    // Wait for connection with timeout
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    int timeout = 0;
+    while (WiFi.status() != WL_CONNECTED && timeout < 20) {
         delay(500);
         Serial.print(".");
-        attempts++;
+        timeout++;
     }
     
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println();
-        Serial.print("WiFi connected! IP address: ");
-        Serial.println(WiFi.localIP());
-        
-        // Time sync after WiFi is connected
-        syncTimeFromNTP(doc);
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("\nFailed to connect to WiFi!");
+        return false;
+    }
+    
+    Serial.println("\nWiFi connected! IP address: " + WiFi.localIP().toString());
+    
+    // Time sync after WiFi is connected
+    syncTimeFromNTP(doc);
+    
+    // Check if UIManager is initialized
+    if (!uiManager) {
+        Serial.println("Error: UIManager not initialized!");
+        return false;
+    }
+    
+    // Process weather configuration
+    return initializeWeatherFromConfig(doc);
+}
+
+bool initializeWeatherFromConfig(JsonDocument& doc) {
+    // Check if weather configuration exists
+    if (!doc.containsKey("weather")) {
+        Serial.println("No weather configuration found in config.json");
+        return false;
+    }
+    
+    Serial.println("Weather configuration found, parsing...");
+    
+    // Extract weather configuration with appropriate defaults
+    String apiKey = doc["weather"]["appid"].as<String>();
+    float latitude = doc["weather"]["lat"] | 0.0f;
+    float longitude = doc["weather"]["lon"] | 0.0f;
+    String units = doc["weather"]["units"] | "metric";
+    String language = doc["weather"]["lang"] | "de";
+    
+    // Log extracted values
+    Serial.println("Extracted weather configuration:");
+    Serial.printf("API Key: [%s]\n", apiKey.length() > 0 ? apiKey.c_str() : "EMPTY");
+    Serial.printf("Location: [%.6f, %.6f]\n", latitude, longitude);
+    Serial.printf("Units: [%s], Language: [%s]\n", units.c_str(), language.c_str());
+    
+    // Validate configuration
+    if (apiKey.isEmpty() || latitude == 0.0f || longitude == 0.0f) {
+        Serial.println("Weather configuration is incomplete, cannot initialize service");
+        return false;
+    }
+    
+    // Initialize weather service
+    Serial.println("Initializing WeatherService with extracted configuration...");
+    if (uiManager->initWeatherService(apiKey, latitude, longitude, units, language)) {
+        Serial.println("WeatherService initialized successfully");
+        return true;
     } else {
-        Serial.println();
-        Serial.println("WiFi connection failed!");
+        Serial.println("Failed to initialize WeatherService");
+        return false;
     }
 }
 
 // NTP time synchronization function
-void syncTimeFromNTP(DynamicJsonDocument& config) {
+void syncTimeFromNTP(JsonDocument& config) {
     Serial.println("Synchronizing time from NTP...");
     
     // Extract NTP server and timezone from config
@@ -591,6 +653,13 @@ void timeUpdateTimerCallback(lv_timer_t *timer) {
     }
 }
 
+// Callback for weather update timer
+void weatherUpdateTimerCallback(lv_timer_t *timer) {
+    if (uiManager) {
+        uiManager->updateWeatherData();
+    }
+}
+
 // Start all periodic tasks
 void startPeriodicTasks() {
     // Enable recoloring on the WiFi quality label to support colored text
@@ -608,6 +677,9 @@ void startPeriodicTasks() {
     // Create a timer that runs every 30 seconds (30000ms) for environmental sensor updates
     env_sensor_timer = lv_timer_create(envSensorTimerCallback, 30000, NULL);
     
+    // Create a timer that runs every 5 minutes (300000ms) for weather data updates
+    weather_update_timer = lv_timer_create(weatherUpdateTimerCallback, 300000, NULL);
+    
     // Run the first updates immediately using UIManager
     if (uiManager) {
         uiManager->updateWiFiStatusUI();
@@ -618,6 +690,11 @@ void startPeriodicTasks() {
     // Immediately run environment sensor update
     if (uiManager) {
         uiManager->updateEnvironmentalData();
+    }
+    
+    // Initial weather update
+    if (uiManager) {
+        uiManager->updateWeatherData();
     }
 }
 

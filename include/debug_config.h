@@ -14,6 +14,9 @@
   #ifndef SENSOR_DEBUG
     #define SENSOR_DEBUG 1
   #endif
+  #ifndef WEATHER_DEBUG
+    #define WEATHER_DEBUG 1
+  #endif
 #endif
 
 // Default values if not already defined
@@ -27,4 +30,8 @@
 
 #ifndef SENSOR_DEBUG
   #define SENSOR_DEBUG 0
+#endif
+
+#ifndef WEATHER_DEBUG
+  #define WEATHER_DEBUG 0
 #endif

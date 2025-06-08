@@ -1,0 +1,18 @@
+{
+  "wifi": {
+    "ssid": "YourWiFiNetwork",
+    "password": "YourWiFiPassword"
+  },
+  "ntp": {
+    "server1": "pool.ntp.org",
+    "server2": "time.nist.gov",
+    "timezone": "CET-1CEST,M3.5.0,M10.5.0/3"
+  },
+  "weather": {
+    "apiKey": "YourOpenWeatherMapAPIKey",
+    "latitude": 52.520008,
+    "longitude": 13.404954,
+    "units": "metric",
+    "language": "de"
+  }
+}

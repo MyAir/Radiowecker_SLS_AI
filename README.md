@@ -38,5 +38,40 @@ Use version 2.0.0 library SPI
 Use version 1.0 of the library ui 
 Use version 2.0.0 version of library Wire 
 Use version 1.0.2 of the library TAMC_GT911 
+Use version 6.21.3 of the library ArduinoJson
 
 ```
+
+## Weather Service
+
+The project includes a weather service that fetches data from OpenWeatherMap API. To use this feature:
+
+1. Create a free account at [OpenWeatherMap](https://openweathermap.org/) and get an API key
+2. Add the weather configuration to your `config.json` file on the SD card as shown below
+
+```json
+{
+  "wifi": {
+    "ssid": "YourWiFiNetwork",
+    "password": "YourWiFiPassword"
+  },
+  "ntp": {
+    "server1": "pool.ntp.org",
+    "server2": "time.nist.gov",
+    "timezone": "CET-1CEST,M3.5.0,M10.5.0/3"
+  },
+  "weather": {
+    "apiKey": "YourOpenWeatherMapAPIKey",
+    "latitude": 52.520008,
+    "longitude": 13.404954,
+    "units": "metric",
+    "language": "de"
+  }
+}
+```
+
+The weather data is refreshed every 5 minutes and includes:
+- Current temperature and conditions
+- Morning forecast (6:00-12:00)
+- Afternoon forecast (12:00-18:00)
+- Night forecast (18:00-24:00)

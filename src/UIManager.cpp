@@ -467,3 +467,48 @@ void UIManager::updateWiFiStatusUI() {
 #endif
     }
 }
+
+// Initialize the weather service with API key and location
+bool UIManager::initWeatherService(const String& apiKey, float latitude, float longitude,
+                                 const String& units, const String& language) {
+    WeatherService& weatherService = WeatherService::getInstance();
+    bool result = weatherService.init(apiKey, latitude, longitude, units, language);
+    
+    // Set the update interval (5 minutes = 300000 ms)
+    weatherService.setUpdateInterval(300000);
+    
+    // Force an update to get initial weather data
+    if (result && WiFi.status() == WL_CONNECTED) {
+        updateWeatherData();
+    }
+    
+    return result;
+}
+
+// Update weather data if needed and update the UI
+void UIManager::updateWeatherData() {
+    // Check if WiFi is connected - can't update weather without network
+    if (WiFi.status() != WL_CONNECTED) {
+        #if WEATHER_DEBUG
+        Serial.println("Cannot update weather: WiFi not connected");
+        #endif
+        return;
+    }
+    
+    // Get reference to the singleton weather service
+    WeatherService& weatherService = WeatherService::getInstance();
+    
+    // Check if it's time to update (will only update if interval has passed)
+    if (weatherService.update()) {
+        // Update was performed, save the timestamp
+        lastWeatherUpdateTime = millis();
+        
+        #if WEATHER_DEBUG
+        Serial.println("Weather data updated successfully");
+        #endif
+    } else {
+        #if WEATHER_DEBUG
+        Serial.println("No weather update needed yet");
+        #endif
+    }
+}
