@@ -205,8 +205,8 @@ void ui_homeScreen_screen_init(void)
     lv_obj_set_width(ui_NextAlarm, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_NextAlarm, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_NextAlarm, LV_ALIGN_BOTTOM_MID);
-    lv_label_set_text(ui_NextAlarm, "Naechster Alarm: Donnerstag 31.12.2025 22:22");
-    lv_obj_set_style_text_font(ui_NextAlarm, &lv_font_montserrat_16, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_label_set_text(ui_NextAlarm, "Nächster Alarm: Donnerstag 31.12.2025 22:22");
+    lv_obj_set_style_text_font(ui_NextAlarm, &ui_font_ms16m, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_sensorPanel = lv_obj_create(ui_homeScreenPanel);
     lv_obj_set_height(ui_sensorPanel, 75);

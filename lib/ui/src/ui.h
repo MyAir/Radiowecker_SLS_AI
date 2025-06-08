@@ -51,6 +51,7 @@ LV_IMG_DECLARE(ui_img_weather_icons_50n_png);    // assets/weather_icons/50n.png
 // FONTS
 LV_FONT_DECLARE(ui_font_ms14m);
 LV_FONT_DECLARE(ui_font_ms80m);
+LV_FONT_DECLARE(ui_font_ms16m);
 
 // UI INIT
 void ui_init(void);

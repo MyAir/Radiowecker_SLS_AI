@@ -144,6 +144,9 @@ public:
     // Update UI with weather data
     void updateWeatherUI();
     
+    // Helper function to map icon codes to UI image resources
+    const void* getIconForCode(const String& iconCode);
+    
     // Set update interval (in milliseconds)
     void setUpdateInterval(uint32_t interval) { updateInterval = interval; }
 };

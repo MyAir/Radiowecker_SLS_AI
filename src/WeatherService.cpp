@@ -276,6 +276,7 @@ void WeatherService::calculateDailyForecasts() {
     localtime_r(&now, &timeinfo);
     int currentHour = timeinfo.tm_hour;
     int currentDay = timeinfo.tm_mday;
+    int currentMonth = timeinfo.tm_mon + 1; // 0-based to 1-based
     
     // Get sunrise and sunset times from current weather data
     time_t sunriseTime = currentWeather.sunrise;
@@ -289,108 +290,296 @@ void WeatherService::calculateDailyForecasts() {
     int sunsetHour = sunsetInfo.tm_hour;
     
     #if WEATHER_DEBUG
-    Serial.printf("Current time: %02d:%02d, day: %d\n", 
-                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_mday);
+    Serial.printf("Current time: %02d:%02d, day: %02d.%02d\n", 
+                 currentHour, timeinfo.tm_min, currentDay, currentMonth + 1);
     Serial.printf("Sunrise: %02d:%02d, Sunset: %02d:%02d\n", 
-                 sunriseInfo.tm_hour, sunriseInfo.tm_min, 
-                 sunsetInfo.tm_hour, sunsetInfo.tm_min);
+                 sunriseHour, sunriseInfo.tm_min, 
+                 sunsetHour, sunsetInfo.tm_min);
     #endif
     
-    // Initialize forecast period counters and accumulators
-    int morningCount = 0;
-    float morningTempSum = 0;
-    float morningPopSum = 0;
-    std::vector<String> morningIcons;
-    
-    int afternoonCount = 0;
-    float afternoonTempSum = 0;
-    float afternoonPopSum = 0;
-    std::vector<String> afternoonIcons;
-    
-    int nightCount = 0;
-    float nightTempSum = 0;
-    float nightPopSum = 0;
-    std::vector<String> nightIcons;
-    
-    // Determine target days for each period based on current time
-    int morningTargetDay, afternoonTargetDay, nightTargetDay;
-    
-    // Using noon as midday reference point
     int middayHour = 12;
     
-    if (currentHour < middayHour) {
-        // Before noon: show today's morning (if available), afternoon and night
-        morningTargetDay = currentDay;
-        afternoonTargetDay = currentDay;
-        nightTargetDay = currentDay;
-    } else if (currentHour < sunsetHour) {
-        // Afternoon: morning is over, show next day's morning, today's afternoon and night
-        morningTargetDay = currentDay + 1;
-        afternoonTargetDay = currentDay;
-        nightTargetDay = currentDay;
+    // Initialize variables for calculating averages
+    float morningTempSum = 0;
+    float morningPopSum = 0;
+    float afternoonTempSum = 0;
+    float afternoonPopSum = 0;
+    float nightTempSum = 0;
+    float nightPopSum = 0;
+    
+    int morningCount = 0;
+    int afternoonCount = 0;
+    int nightCount = 0;
+    
+    // Store weather icons to find the most frequent one
+    std::vector<String> morningIcons;
+    std::vector<String> afternoonIcons;
+    std::vector<String> nightIcons;
+    
+    // Define time ranges for each period based on current time
+    time_t morningStartTime, morningEndTime;
+    time_t afternoonStartTime, afternoonEndTime;
+    time_t nightStartTime, nightEndTime;
+    
+    // Set start and end days/times for each period based on current time
+    const int NOON_HOUR = 12;
+    
+    if (currentHour >= sunriseHour && currentHour < NOON_HOUR) {
+        // Current time is in the morning (after sunrise, before noon)
+        #if WEATHER_DEBUG
+        Serial.println("Current time is in the morning period");
+        #endif
+        
+        // Morning: now until noon today
+        morningStartTime = now;
+        
+        // Calculate noon today
+        struct tm noonTime = timeinfo;
+        noonTime.tm_hour = NOON_HOUR;
+        noonTime.tm_min = 0;
+        noonTime.tm_sec = 0;
+        morningEndTime = mktime(&noonTime);
+        
+        // Afternoon: noon today until sunset today
+        afternoonStartTime = morningEndTime;
+        afternoonEndTime = sunsetTime;
+        
+        // Night: sunset today until sunrise tomorrow
+        nightStartTime = sunsetTime;
+        
+        // Calculate sunrise tomorrow
+        struct tm tomorrowSunrise = sunriseInfo;
+        tomorrowSunrise.tm_mday++; // Next day
+        nightEndTime = mktime(&tomorrowSunrise);
+        
+    } else if (currentHour >= NOON_HOUR && currentHour < sunsetHour) {
+        // Current time is in the afternoon (after noon, before sunset)
+        #if WEATHER_DEBUG
+        Serial.println("Current time is in the afternoon period");
+        #endif
+        
+        // Calculate sunrise tomorrow
+        struct tm tomorrowSunrise = sunriseInfo;
+        tomorrowSunrise.tm_mday++; // Next day
+        time_t nextSunrise = mktime(&tomorrowSunrise);
+        
+        // Calculate noon tomorrow
+        struct tm tomorrowNoon = timeinfo;
+        tomorrowNoon.tm_mday++; // Next day
+        tomorrowNoon.tm_hour = NOON_HOUR;
+        tomorrowNoon.tm_min = 0;
+        tomorrowNoon.tm_sec = 0;
+        time_t nextNoon = mktime(&tomorrowNoon);
+        
+        // Morning: sunrise tomorrow until noon tomorrow
+        morningStartTime = nextSunrise;
+        morningEndTime = nextNoon;
+        
+        // Afternoon: now until sunset today
+        afternoonStartTime = now;
+        afternoonEndTime = sunsetTime;
+        
+        // Night: sunset today until sunrise tomorrow
+        nightStartTime = sunsetTime;
+        nightEndTime = nextSunrise;
+        
+    } else if (currentHour >= sunsetHour) {
+        // Current time is at night after sunset but before midnight
+        #if WEATHER_DEBUG
+        Serial.println("Current time is at night (after sunset, before midnight)");
+        #endif
+        
+        // Calculate sunrise tomorrow
+        struct tm tomorrowSunrise = sunriseInfo;
+        tomorrowSunrise.tm_mday++; // Next day
+        time_t nextSunrise = mktime(&tomorrowSunrise);
+        
+        // Calculate noon tomorrow
+        struct tm tomorrowNoon = timeinfo;
+        tomorrowNoon.tm_mday++; // Next day
+        tomorrowNoon.tm_hour = NOON_HOUR;
+        tomorrowNoon.tm_min = 0;
+        tomorrowNoon.tm_sec = 0;
+        time_t nextNoon = mktime(&tomorrowNoon);
+        
+        // Calculate sunset tomorrow
+        struct tm tomorrowSunset = sunsetInfo;
+        tomorrowSunset.tm_mday++; // Next day
+        time_t nextSunset = mktime(&tomorrowSunset);
+        
+        // Morning: sunrise tomorrow until noon tomorrow
+        morningStartTime = nextSunrise;
+        morningEndTime = nextNoon;
+        
+        // Afternoon: noon tomorrow until sunset tomorrow
+        afternoonStartTime = nextNoon;
+        afternoonEndTime = nextSunset;
+        
+        // Night: now until sunrise tomorrow
+        nightStartTime = now;
+        nightEndTime = nextSunrise;
+        
     } else {
-        // Evening: morning and afternoon are over, show tomorrow for all periods
-        morningTargetDay = currentDay + 1;
-        afternoonTargetDay = currentDay + 1;
-        nightTargetDay = currentDay + 1;
+        // Current time is after midnight and before sunrise
+        #if WEATHER_DEBUG
+        Serial.println("Current time is at night (after midnight, before sunrise)");
+        #endif
+        
+        // Calculate noon today
+        struct tm todayNoon = timeinfo;
+        todayNoon.tm_hour = NOON_HOUR;
+        todayNoon.tm_min = 0;
+        todayNoon.tm_sec = 0;
+        time_t noonToday = mktime(&todayNoon);
+        
+        // Morning: sunrise today until noon today
+        morningStartTime = sunriseTime;
+        morningEndTime = noonToday;
+        
+        // Afternoon: noon today until sunset today
+        afternoonStartTime = noonToday;
+        afternoonEndTime = sunsetTime;
+        
+        // Night: now until sunrise today
+        nightStartTime = now;
+        nightEndTime = sunriseTime;
     }
     
     #if WEATHER_DEBUG
-    Serial.printf("Target days - Morning: %d, Afternoon: %d, Night: %d\n", 
-                 morningTargetDay, afternoonTargetDay, nightTargetDay);
+    struct tm morningStart, morningEnd, afternoonStart, afternoonEnd, nightStart, nightEnd;
+    localtime_r(&morningStartTime, &morningStart);
+    localtime_r(&morningEndTime, &morningEnd);
+    localtime_r(&afternoonStartTime, &afternoonStart);
+    localtime_r(&afternoonEndTime, &afternoonEnd);
+    localtime_r(&nightStartTime, &nightStart);
+    localtime_r(&nightEndTime, &nightEnd);
+    
+    Serial.printf("Morning period: %02d.%02d %02d:%02d to %02d.%02d %02d:%02d\n",
+                 morningStart.tm_mday, morningStart.tm_mon + 1, morningStart.tm_hour, morningStart.tm_min,
+                 morningEnd.tm_mday, morningEnd.tm_mon + 1, morningEnd.tm_hour, morningEnd.tm_min);
+    
+    Serial.printf("Afternoon period: %02d.%02d %02d:%02d to %02d.%02d %02d:%02d\n",
+                 afternoonStart.tm_mday, afternoonStart.tm_mon + 1, afternoonStart.tm_hour, afternoonStart.tm_min,
+                 afternoonEnd.tm_mday, afternoonEnd.tm_mon + 1, afternoonEnd.tm_hour, afternoonEnd.tm_min);
+    
+    Serial.printf("Night period: %02d.%02d %02d:%02d to %02d.%02d %02d:%02d\n",
+                 nightStart.tm_mday, nightStart.tm_mon + 1, nightStart.tm_hour, nightStart.tm_min,
+                 nightEnd.tm_mday, nightEnd.tm_mon + 1, nightEnd.tm_hour, nightEnd.tm_min);
     #endif
     
     // Process hourly forecasts and categorize them
     for (int i = 0; i < hourlyForecastCount; i++) {
         // Get the date/time for this forecast
         time_t forecastTime = hourlyForecasts[i].dt;
-        struct tm* forecastTimeinfo = localtime(&forecastTime);
-        int forecastHour = forecastTimeinfo->tm_hour;
-        int forecastDay = forecastTimeinfo->tm_mday;
         
         // Only process the next 48 hours
         if (forecastTime > now + 48*3600) {
             break;
         }
         
-        // Morning forecasts (sunrise to noon) for the morning target day
-        if (forecastDay == morningTargetDay && forecastHour >= sunriseHour && forecastHour < 12) {
+        // Check which period this forecast belongs to
+        if (forecastTime >= morningStartTime && forecastTime < morningEndTime) {
+            // Morning forecast
             morningTempSum += hourlyForecasts[i].temp;
             morningPopSum += hourlyForecasts[i].pop;
-            morningIcons.push_back(hourlyForecasts[i].weather_icon);
+            
+            // For morning forecast, ensure we use day icons
+            String iconCode = hourlyForecasts[i].weather_icon;
+            if (iconCode.length() >= 3 && iconCode.charAt(iconCode.length() - 1) == 'n') {
+                iconCode = iconCode.substring(0, iconCode.length() - 1) + "d";
+#if WEATHER_DEBUG
+                Serial.printf("Converting morning icon %s to day icon %s\n", 
+                             hourlyForecasts[i].weather_icon.c_str(), iconCode.c_str());
+#endif
+            }
+            morningIcons.push_back(iconCode);
             morningCount++;
+            
+#if WEATHER_DEBUG
+            struct tm* debugTimeinfo = localtime(&forecastTime);
+            Serial.printf("Added to morning forecast: %02d.%02d %02d:%02d, icon: %s\n",
+                         debugTimeinfo->tm_mday, debugTimeinfo->tm_mon + 1,
+                         debugTimeinfo->tm_hour, debugTimeinfo->tm_min,
+                         iconCode.c_str());
+#endif
         }
         
-        // Afternoon forecasts (noon to sunset) for the afternoon target day
-        if (forecastDay == afternoonTargetDay && forecastHour >= 12 && forecastHour < sunsetHour) {
+        if (forecastTime >= afternoonStartTime && forecastTime < afternoonEndTime) {
+            // Afternoon forecast
             afternoonTempSum += hourlyForecasts[i].temp;
             afternoonPopSum += hourlyForecasts[i].pop;
-            afternoonIcons.push_back(hourlyForecasts[i].weather_icon);
+            
+            // For afternoon forecast, always ensure we use day icons
+            String iconCode = hourlyForecasts[i].weather_icon;
+            if (iconCode.length() >= 3 && iconCode.charAt(iconCode.length() - 1) == 'n') {
+                iconCode = iconCode.substring(0, iconCode.length() - 1) + "d";
+#if WEATHER_DEBUG
+                Serial.printf("Converting afternoon icon %s to day icon %s\n", 
+                             hourlyForecasts[i].weather_icon.c_str(), iconCode.c_str());
+#endif
+            }
+            afternoonIcons.push_back(iconCode);
             afternoonCount++;
+            
+#if WEATHER_DEBUG
+            struct tm* debugTimeinfo = localtime(&forecastTime);
+            Serial.printf("Added to afternoon forecast: %02d.%02d %02d:%02d, icon: %s\n",
+                         debugTimeinfo->tm_mday, debugTimeinfo->tm_mon + 1,
+                         debugTimeinfo->tm_hour, debugTimeinfo->tm_min,
+                         iconCode.c_str());
+#endif
         }
         
-        // Night forecasts (after sunset) for the night target day
-        if (forecastDay == nightTargetDay && forecastHour >= sunsetHour) {
+        if (forecastTime >= nightStartTime && forecastTime < nightEndTime) {
+            // Night forecast
             nightTempSum += hourlyForecasts[i].temp;
             nightPopSum += hourlyForecasts[i].pop;
-            nightIcons.push_back(hourlyForecasts[i].weather_icon);
+            
+            // For night forecast, ensure we use night icons
+            String iconCode = hourlyForecasts[i].weather_icon;
+            if (iconCode.length() >= 3 && iconCode.charAt(iconCode.length() - 1) == 'd') {
+                iconCode = iconCode.substring(0, iconCode.length() - 1) + "n";
+#if WEATHER_DEBUG
+                Serial.printf("Converting night icon %s to night icon %s\n", 
+                             hourlyForecasts[i].weather_icon.c_str(), iconCode.c_str());
+#endif
+            }
+            nightIcons.push_back(iconCode);
             nightCount++;
+            
+#if WEATHER_DEBUG
+            struct tm* debugTimeinfo = localtime(&forecastTime);
+            Serial.printf("Added to night forecast: %02d.%02d %02d:%02d, icon: %s\n",
+                         debugTimeinfo->tm_mday, debugTimeinfo->tm_mon + 1,
+                         debugTimeinfo->tm_hour, debugTimeinfo->tm_min,
+                         iconCode.c_str());
+#endif
         }
     }
-    
     // Calculate morning forecast summary
     if (morningCount > 0) {
         morningForecast.avgTemp = morningTempSum / morningCount;
         morningForecast.avgPop = morningPopSum / morningCount;
         morningForecast.iconCode = getMostFrequentIcon(morningIcons);
         
-        // Ensure icon code is never empty
-        if (morningForecast.iconCode.isEmpty()) {
-#if WEATHER_DEBUG
-            Serial.println("Warning: Morning icon code is empty, using default");
-#endif
-            morningForecast.iconCode = "01d"; // Default to clear sky day
+        // We've already enforced day icons during collection, but double check here
+        if (morningForecast.iconCode.length() >= 3 && 
+            morningForecast.iconCode.charAt(morningForecast.iconCode.length() - 1) == 'n') {
+            morningForecast.iconCode = 
+                morningForecast.iconCode.substring(0, morningForecast.iconCode.length() - 1) + "d";
+            
+            #if WEATHER_DEBUG
+            Serial.printf("Final correction: Morning icon set to %s\n", morningForecast.iconCode.c_str());
+            #endif
         }
+    } else {
+        morningForecast.avgTemp = 0;
+        morningForecast.avgPop = 0;
+        morningForecast.iconCode = "03d"; // Default cloudy icon
+        
+        #if WEATHER_DEBUG
+        Serial.println("No morning forecasts found, using default icon 03d");
+        #endif
     }
     
     // Calculate afternoon forecast summary
@@ -399,13 +588,24 @@ void WeatherService::calculateDailyForecasts() {
         afternoonForecast.avgPop = afternoonPopSum / afternoonCount;
         afternoonForecast.iconCode = getMostFrequentIcon(afternoonIcons);
         
-        // Ensure icon code is never empty
-        if (afternoonForecast.iconCode.isEmpty()) {
-#if WEATHER_DEBUG
-            Serial.println("Warning: Afternoon icon code is empty, using default");
-#endif
-            afternoonForecast.iconCode = "01d"; // Default to clear sky day
+        // We've already enforced day icons during collection, but double check here
+        if (afternoonForecast.iconCode.length() >= 3 && 
+            afternoonForecast.iconCode.charAt(afternoonForecast.iconCode.length() - 1) == 'n') {
+            afternoonForecast.iconCode = 
+                afternoonForecast.iconCode.substring(0, afternoonForecast.iconCode.length() - 1) + "d";
+            
+            #if WEATHER_DEBUG
+            Serial.printf("Final correction: Afternoon icon set to %s\n", afternoonForecast.iconCode.c_str());
+            #endif
         }
+    } else {
+        afternoonForecast.avgTemp = 0;
+        afternoonForecast.avgPop = 0;
+        afternoonForecast.iconCode = "03d"; // Default cloudy icon
+        
+        #if WEATHER_DEBUG
+        Serial.println("No afternoon forecasts found, using default icon 03d");
+        #endif
     }
     
     // Calculate night forecast summary
@@ -414,29 +614,37 @@ void WeatherService::calculateDailyForecasts() {
         nightForecast.avgPop = nightPopSum / nightCount;
         nightForecast.iconCode = getMostFrequentIcon(nightIcons);
         
-        // Ensure icon code is never empty
-        if (nightForecast.iconCode.isEmpty()) {
-#if WEATHER_DEBUG
-            Serial.println("Warning: Night icon code is empty, using default");
-#endif
-            nightForecast.iconCode = "01n"; // Default to clear sky night
+        // We've already enforced night icons during collection, but double check here
+        if (nightForecast.iconCode.length() >= 3 && 
+            nightForecast.iconCode.charAt(nightForecast.iconCode.length() - 1) == 'd') {
+            nightForecast.iconCode = 
+                nightForecast.iconCode.substring(0, nightForecast.iconCode.length() - 1) + "n";
+            
+            #if WEATHER_DEBUG
+            Serial.printf("Final correction: Night icon set to %s\n", nightForecast.iconCode.c_str());
+            #endif
         }
+    } else {
+        nightForecast.avgTemp = 0;
+        nightForecast.avgPop = 0;
+        nightForecast.iconCode = "03n"; // Default cloudy night icon
+        
+        #if WEATHER_DEBUG
+        Serial.println("No night forecasts found, using default icon 03n");
+        #endif
     }
     
     #if WEATHER_DEBUG
-    Serial.println("Daily forecasts calculated:");
-    if (morningCount > 0) {
-        Serial.printf("  Morning: %.1f°C, %.0f%% rain, icon: %s\n", 
-                    morningForecast.avgTemp, morningForecast.avgPop * 100, morningForecast.iconCode.c_str());
-    }
-    if (afternoonCount > 0) {
-        Serial.printf("  Afternoon: %.1f°C, %.0f%% rain, icon: %s\n", 
-                    afternoonForecast.avgTemp, afternoonForecast.avgPop * 100, afternoonForecast.iconCode.c_str());
-    }
-    if (nightCount > 0) {
-        Serial.printf("  Night: %.1f°C, %.0f%% rain, icon: %s\n", 
-                    nightForecast.avgTemp, nightForecast.avgPop * 100, nightForecast.iconCode.c_str());
-    }
+    Serial.println("Final forecast summary:");
+    Serial.printf("  Morning: %.1f°C, %d%% pop, icon: %s (%d datapoints)\n", 
+                 morningForecast.avgTemp, (int)(morningForecast.avgPop * 100), 
+                 morningForecast.iconCode.c_str(), morningCount);
+    Serial.printf("  Afternoon: %.1f°C, %d%% pop, icon: %s (%d datapoints)\n", 
+                 afternoonForecast.avgTemp, (int)(afternoonForecast.avgPop * 100), 
+                 afternoonForecast.iconCode.c_str(), afternoonCount);
+    Serial.printf("  Night: %.1f°C, %d%% pop, icon: %s (%d datapoints)\n", 
+                 nightForecast.avgTemp, (int)(nightForecast.avgPop * 100), 
+                 nightForecast.iconCode.c_str(), nightCount);
     #endif
 }
 
@@ -600,7 +808,7 @@ void WeatherService::updateWeatherUI() {
 }
 
 // Implementation of getIconForCode function to map OpenWeatherMap icon codes to UI icon resources
-const void* getIconForCode(const String& iconCode) {
+const void* WeatherService::getIconForCode(const String& iconCode) {
     // Map OpenWeatherMap icon codes to our UI icon resources
     if (iconCode == "01d") return &ui_img_weather_icons_01d_png;
     if (iconCode == "01n") return &ui_img_weather_icons_01n_png;

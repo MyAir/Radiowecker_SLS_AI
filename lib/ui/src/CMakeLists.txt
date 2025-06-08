@@ -22,6 +22,7 @@ SET(SOURCES screens/ui_homeScreen.c
     images/ui_img_weather_icons_50d_png.c
     images/ui_img_weather_icons_50n_png.c
     fonts/ui_font_ms14m.c
-    fonts/ui_font_ms80m.c)
+    fonts/ui_font_ms80m.c
+    fonts/ui_font_ms16m.c)
 
 add_library(ui ${SOURCES})
