@@ -10,6 +10,7 @@
 #include <time.h>
 #include "touch.h"
 #include "UIManager.h"
+#include "debug_config.h"
 
 // Use the debug macros from touch.h
 
@@ -21,8 +22,6 @@ void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels);
 void connectToWiFi();
 void syncTimeFromNTP(DynamicJsonDocument& config);
 void updateWiFiStatusUI();
-void updateTimeUI();
-void updateDateUI();
 void startPeriodicTasks();
 void wifiStatusTimerCallback(lv_timer_t *timer);
 void timeUpdateTimerCallback(lv_timer_t *timer);
@@ -36,9 +35,6 @@ lv_indev_t * touch_indev = NULL;
 lv_timer_t * wifi_status_timer = NULL;
 lv_timer_t * time_update_timer = NULL;
 lv_timer_t * env_sensor_timer = NULL;
-
-// Time tracking
-int last_update_hour = -1;
 
 // Variable to store last WiFi status update time
 unsigned long lastWiFiUpdateTime = 0;
@@ -350,11 +346,11 @@ void setup()
     // Initialize UIManager and sensors
     uiManager = UIManager::getInstance();
     if (uiManager->initSensors()) {
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("Environmental sensors initialized successfully");
 #endif
     } else {
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("Failed to initialize one or more environmental sensors");
 #endif
     }
@@ -561,83 +557,13 @@ static lv_fs_res_t fs_tell(lv_fs_drv_t * drv, void * file_p, uint32_t * pos_p) {
     return LV_FS_RES_OK;
 }
 
-// Update WiFi status information in the UI
-void updateWiFiStatusUI() {
-    // Only update if WiFi is connected
-    if (WiFi.status() == WL_CONNECTED) {
-        // Get current WiFi information
-        String ssid = WiFi.SSID();
-        String ip = WiFi.localIP().toString();
-        int rssi = WiFi.RSSI(); // Signal strength in dBm
-        
-        // Convert RSSI to quality percentage (typically, -50dBm is excellent, -100dBm is poor)
-        int quality = constrain(map(rssi, -100, -50, 0, 100), 0, 100);
-        
-        // Create quality string with WiFi symbol and color based on quality
-        String colorTag;
-        
-        // Color gradient from red to yellow to green based on quality
-        if (quality < 30) {
-            // Poor signal - red
-            colorTag = "#FF0000 ";
-        } else if (quality < 50) {
-            // Weak signal - orange
-            colorTag = "#FF8000 ";
-        } else if (quality < 70) {
-            // Medium signal - yellow
-            colorTag = "#FFFF00 ";
-        } else {
-            // Good signal - green
-            colorTag = "#00FF00 ";
-        }
-        
-        // Format with LVGL color text: #RRGGBB followed by the text
-        String qualityStr = String(LV_SYMBOL_WIFI) + " " + colorTag + String(quality) + "%";
-        
-        // Debug output
-#if UI_DEBUG
-        Serial.print("Updating WiFi UI - SSID: ");
-        Serial.print(ssid);
-        Serial.print(", IP: ");
-        Serial.print(ip);
-        Serial.print(", Quality: ");
-        Serial.println(qualityStr);
-#endif
-        
-        // Update the UI labels
-        if (ui_wifiLabel != NULL) {
-            lv_label_set_text(ui_wifiLabel, ssid.c_str());
-        }
-        
-        if (ui_ipLabel != NULL) {
-            lv_label_set_text(ui_ipLabel, ip.c_str());
-        }
-        
-        if (ui_wifiQualityLabel != NULL) {
-            lv_label_set_text(ui_wifiQualityLabel, qualityStr.c_str());
-        }
-        
-        lastWiFiUpdateTime = millis();
-    } else {
-        // WiFi is not connected - update UI accordingly
-        if (ui_wifiLabel != NULL) {
-            lv_label_set_text(ui_wifiLabel, "Not Connected");
-        }
-        
-        if (ui_ipLabel != NULL) {
-            lv_label_set_text(ui_ipLabel, "--.--.--.--");
-        }
-        
-        if (ui_wifiQualityLabel != NULL) {
-            // Show disconnected WiFi in red
-            lv_label_set_text(ui_wifiQualityLabel, LV_SYMBOL_WIFI "  #FF0000 --");
-        }
-    }
-}
+// WiFi status update is now handled by UIManager
 
 // WiFi status update timer callback
 void wifiStatusTimerCallback(lv_timer_t * timer) {
-    updateWiFiStatusUI();
+    if (uiManager) {
+        uiManager->updateWiFiStatusUI();
+    }
 }
 
 // Environmental sensor update timer callback
@@ -647,61 +573,20 @@ void envSensorTimerCallback(lv_timer_t * timer) {
     }
 }
 
-// Update time on the main screen
-void updateTimeUI() {
-    struct tm timeinfo;
-    char timeString[9];
-    
-    if (getLocalTime(&timeinfo)) {
-        strftime(timeString, sizeof(timeString), "%H:%M:%S", &timeinfo);
-        
-        if (ui_Uhrzeit != NULL) {
-            lv_label_set_text(ui_Uhrzeit, timeString);
-        }
-    }
-}
-
-// Update date on the main screen in German format
-void updateDateUI() {
-    struct tm timeinfo;
-    char dateString[30];
-    
-    if (getLocalTime(&timeinfo)) {
-        // Get current hour to track hour changes
-        int current_hour = timeinfo.tm_hour;
-        
-        // Store the last update hour
-        last_update_hour = current_hour;
-        
-        // Array of German weekday names
-        const char* weekdays_de[] = {"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"};
-        
-        // Format: Weekday dd.mm.yyyy
-        sprintf(dateString, "%s %02d.%02d.%04d", 
-                weekdays_de[timeinfo.tm_wday], 
-                timeinfo.tm_mday, 
-                timeinfo.tm_mon + 1, 
-                timeinfo.tm_year + 1900);
-        
-        if (ui_Datum != NULL) {
-            lv_label_set_text(ui_Datum, dateString);
-#if UI_DEBUG
-            Serial.print("Date updated: ");
-            Serial.println(dateString);
-#endif
-        }
-    }
-}
+// Time and date update functions have been moved to UIManager class
 
 // Callback for time update timer
 void timeUpdateTimerCallback(lv_timer_t *timer) {
-    updateTimeUI();
-    
-    // Check if hour has changed to update date as well
-    struct tm timeinfo;
-    if (getLocalTime(&timeinfo)) {
-        if (timeinfo.tm_hour != last_update_hour) {
-            updateDateUI();
+    // Update time using UIManager
+    if (uiManager) {
+        uiManager->updateTimeUI();
+        
+        // Check if hour has changed to update date as well
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo)) {
+            if (timeinfo.tm_hour != uiManager->getLastUpdateHour()) {
+                uiManager->updateDateUI();
+            }
         }
     }
 }
@@ -723,10 +608,12 @@ void startPeriodicTasks() {
     // Create a timer that runs every 30 seconds (30000ms) for environmental sensor updates
     env_sensor_timer = lv_timer_create(envSensorTimerCallback, 30000, NULL);
     
-    // Run the first updates immediately
-    updateWiFiStatusUI();
-    updateTimeUI();
-    updateDateUI();
+    // Run the first updates immediately using UIManager
+    if (uiManager) {
+        uiManager->updateWiFiStatusUI();
+        uiManager->updateTimeUI();
+        uiManager->updateDateUI();
+    }
     
     // Immediately run environment sensor update
     if (uiManager) {

@@ -1,6 +1,7 @@
 #include "UIManager.h"
 #include <ui.h>
 #include <Preferences.h>
+#include "debug_config.h"
 
 // Initialize static singleton instance to nullptr
 UIManager* UIManager::_instance = nullptr;
@@ -29,13 +30,13 @@ bool UIManager::initSensors() {
     // Initialize SHT31 temperature and humidity sensor
     // We don't need to call Wire.begin() here as it's already initialized in main.cpp
     if (!sht31->begin(0x44)) {
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("Couldn't find SHT31 sensor!");
 #endif
         success = false;
     } else {
         sht31Initialized = true;
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("SHT31 sensor initialized successfully");
 #endif
     }
@@ -43,13 +44,13 @@ bool UIManager::initSensors() {
     // Initialize SGP30 VOC and eCO2 sensor
     // Use the Wire instance that was initialized in main.cpp
     if (!sgp30->begin(&Wire)) {
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("Couldn't find SGP30 sensor!");
 #endif
         success = false;
     } else {
         sgp30Initialized = true;
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("SGP30 sensor initialized successfully");
         Serial.print("Found SGP30 serial #");
         Serial.print(sgp30->serialnumber[0], HEX);
@@ -67,7 +68,7 @@ bool UIManager::initSensors() {
         
         // If we have valid baseline values, set them
         if (eco2_baseline > 0 && tvoc_baseline > 0) {
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.printf("Setting SGP30 baselines: eCO2=0x%X, TVOC=0x%X\n", eco2_baseline, tvoc_baseline);
 #endif
             sgp30->setIAQBaseline(eco2_baseline, tvoc_baseline);
@@ -107,12 +108,12 @@ void UIManager::updateTemperature(float temp) {
             // Update last temperature
             lastTemperature = temp;
             
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.printf("Temperature updated: %.1f°C\n", temp);
 #endif
         }
     } else {
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("Temperature label not found in UI");
 #endif
     }
@@ -142,12 +143,12 @@ void UIManager::updateHumidity(float humidity) {
             // Update last humidity
             lastHumidity = humidity;
             
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.printf("Humidity updated: %.0f%%\n", humidity);
 #endif
         }
     } else {
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("Humidity label not found in UI");
 #endif
     }
@@ -181,12 +182,12 @@ void UIManager::updateTVOC(uint16_t tvoc) {
             // Update last TVOC
             lastTVOC = tvoc;
             
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.printf("TVOC updated: %d ppb\n", tvoc);
 #endif
         }
     } else {
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("TVOC label not found in UI");
 #endif
     }
@@ -220,12 +221,12 @@ void UIManager::updateCO2(uint16_t eco2) {
             // Update last eCO2
             lastECO2 = eco2;
             
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.printf("eCO2 updated: %d ppm\n", eco2);
 #endif
         }
     } else {
-#if UI_DEBUG
+#if SENSOR_DEBUG
         Serial.println("CO2 label not found in UI");
 #endif
     }
@@ -243,7 +244,7 @@ void UIManager::updateEnvironmentalData() {
         if (!isnan(temperature)) {
             updateTemperature(temperature);
         } else {
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.println("Invalid temperature reading (NaN)");
 #endif
         }
@@ -251,7 +252,7 @@ void UIManager::updateEnvironmentalData() {
         if (!isnan(humidity)) {
             updateHumidity(humidity);
         } else {
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.println("Invalid humidity reading (NaN)");
 #endif
         }
@@ -266,7 +267,7 @@ void UIManager::updateEnvironmentalData() {
             // Handle baseline updates
             handleSGP30Baseline();
         } else {
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.println("Failed to read from SGP30 sensor");
 #endif
         }
@@ -290,13 +291,179 @@ void UIManager::handleSGP30Baseline() {
             preferences.putUInt("tvoc_base", tvoc_baseline);
             preferences.end();
             
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.printf("SGP30 baselines saved: eCO2=0x%X, TVOC=0x%X\n", eco2_baseline, tvoc_baseline);
 #endif
         } else {
-#if UI_DEBUG
+#if SENSOR_DEBUG
             Serial.println("Failed to get SGP30 baseline values");
 #endif
         }
+    }
+}
+
+// Update time on the main screen
+void UIManager::updateTimeUI() {
+    struct tm timeinfo;
+    char timeString[9];
+    
+    if (getLocalTime(&timeinfo)) {
+        strftime(timeString, sizeof(timeString), "%H:%M:%S", &timeinfo);
+        
+        if (ui_Uhrzeit != NULL) {
+            lv_label_set_text(ui_Uhrzeit, timeString);
+#if TIME_DEBUG
+            Serial.print("Time updated: ");
+            Serial.println(timeString);
+#endif
+        }
+    }
+}
+
+// Update date on the main screen in German format
+void UIManager::updateDateUI() {
+    struct tm timeinfo;
+    char dateString[30];
+    
+    if (getLocalTime(&timeinfo)) {
+        // Get current hour to track hour changes
+        int current_hour = timeinfo.tm_hour;
+        
+        // Store the last update hour
+        hourChangeTracking = current_hour;
+        
+        // Array of German weekday names
+        const char* weekdays_de[] = {"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"};
+        
+        // Format: Weekday dd.mm.yyyy
+        sprintf(dateString, "%s %02d.%02d.%04d", 
+                weekdays_de[timeinfo.tm_wday], 
+                timeinfo.tm_mday, 
+                timeinfo.tm_mon + 1, 
+                timeinfo.tm_year + 1900);
+        
+        if (ui_Datum != NULL) {
+            lv_label_set_text(ui_Datum, dateString);
+#if TIME_DEBUG
+            Serial.print("Date updated: ");
+            Serial.println(dateString);
+#endif
+        }
+    }
+}
+
+// Check if WiFi status has changed
+bool UIManager::hasWiFiStatusChanged() {
+    bool currentlyConnected = (WiFi.status() == WL_CONNECTED);
+    
+    // If connection status changed, we need to update the UI
+    if (currentlyConnected != lastConnected) {
+        return true;
+    }
+    
+    // If not connected in both cases, nothing to update
+    if (!currentlyConnected) {
+        return false;
+    }
+    
+    // Connected, check if details changed
+    String currentSSID = WiFi.SSID();
+    String currentIP = WiFi.localIP().toString();
+    int currentRSSI = WiFi.RSSI();
+    
+    // Check if any relevant WiFi parameter changed
+    return (currentSSID != lastSSID || 
+            currentIP != lastIP || 
+            abs(currentRSSI - lastRSSI) >= 5); // Only update if RSSI changed by 5 dBm or more
+}
+
+// Update WiFi status information in the UI
+void UIManager::updateWiFiStatusUI() {
+    bool currentlyConnected = (WiFi.status() == WL_CONNECTED);
+    
+    // Check if status has changed to avoid unnecessary updates
+    if (!hasWiFiStatusChanged()) {
+        return;
+    }
+    
+    // Save current connection state
+    lastConnected = currentlyConnected;
+    
+    // Only update connected information if WiFi is connected
+    if (currentlyConnected) {
+        // Get current WiFi information
+        String ssid = WiFi.SSID();
+        String ip = WiFi.localIP().toString();
+        int rssi = WiFi.RSSI(); // Signal strength in dBm
+        
+        // Save current values for future comparison
+        lastSSID = ssid;
+        lastIP = ip;
+        lastRSSI = rssi;
+        
+        // Convert RSSI to quality percentage (typically, -50dBm is excellent, -100dBm is poor)
+        int quality = constrain(map(rssi, -100, -50, 0, 100), 0, 100);
+        
+        // Create quality string with WiFi symbol and color based on quality
+        String colorTag;
+        
+        // Color gradient from red to yellow to green based on quality
+        if (quality < 30) {
+            // Poor signal - red
+            colorTag = "#FF0000 ";
+        } else if (quality < 50) {
+            // Weak signal - orange
+            colorTag = "#FF8000 ";
+        } else if (quality < 70) {
+            // Medium signal - yellow
+            colorTag = "#FFFF00 ";
+        } else {
+            // Good signal - green
+            colorTag = "#00FF00 ";
+        }
+        
+        // Format with LVGL color text: #RRGGBB followed by the text
+        String qualityStr = String(LV_SYMBOL_WIFI) + " " + colorTag + String(quality) + "%";
+        
+        // Debug output
+#if STATUS_DEBUG
+        Serial.print("Updating WiFi UI - SSID: ");
+        Serial.print(ssid);
+        Serial.print(", IP: ");
+        Serial.print(ip);
+        Serial.print(", Quality: ");
+        Serial.println(qualityStr);
+#endif
+        
+        // Update the UI labels
+        if (ui_wifiLabel != NULL) {
+            lv_label_set_text(ui_wifiLabel, ssid.c_str());
+        }
+        
+        if (ui_ipLabel != NULL) {
+            lv_label_set_text(ui_ipLabel, ip.c_str());
+        }
+        
+        if (ui_wifiQualityLabel != NULL) {
+            lv_label_set_text(ui_wifiQualityLabel, qualityStr.c_str());
+        }
+    } else {
+        // WiFi is not connected - update UI accordingly
+        if (ui_wifiLabel != NULL) {
+            lv_label_set_text(ui_wifiLabel, "Not Connected");
+        }
+        
+        if (ui_ipLabel != NULL) {
+            lv_label_set_text(ui_ipLabel, "--.--.--.--");
+        }
+        
+        if (ui_wifiQualityLabel != NULL) {
+            // Show disconnected WiFi in red
+            lv_label_set_text(ui_wifiQualityLabel, LV_SYMBOL_WIFI "  #FF0000 --");
+        }
+        
+#if STATUS_DEBUG
+        Serial.println("WiFi not connected, updated UI accordingly");
+#endif
     }
 }

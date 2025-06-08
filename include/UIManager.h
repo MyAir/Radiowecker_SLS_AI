@@ -5,6 +5,7 @@
 #include <lvgl.h>
 #include <Adafruit_SGP30.h>
 #include <Adafruit_SHT31.h>
+#include <WiFi.h>
 
 // Baseline management for SGP30 sensor
 #define SGP30_BASELINE_INTERVAL_MS 3600000  // Every hour (in milliseconds)
@@ -27,6 +28,12 @@ private:
     uint16_t lastTVOC = 0;
     uint16_t lastECO2 = 0;
     
+    // Last WiFi status values
+    String lastSSID = "";
+    String lastIP = "";
+    int lastRSSI = 0;
+    bool lastConnected = false;
+    
     // Sensor initialization status
     bool sgp30Initialized = false;
     bool sht31Initialized = false;
@@ -34,6 +41,9 @@ private:
     // Flags to track first sensor readings
     bool firstTVOCReading = true;
     bool firstECO2Reading = true;
+    
+    // Time tracking for internal use
+    int hourChangeTracking = -1;
     
     // SGP30 baseline management
     unsigned long lastBaselineTime = 0;
@@ -59,6 +69,9 @@ public:
     void updateHumidity(float humidity);
     void updateTVOC(uint16_t tvoc);
     void updateCO2(uint16_t eco2);
+    void updateTimeUI();
+    void updateDateUI();
+    void updateWiFiStatusUI();
     
     // Read sensors and update UI
     void updateEnvironmentalData();
@@ -73,6 +86,12 @@ public:
     // Get initialization status
     bool isSGP30Initialized() { return sgp30Initialized; }
     bool isSHT31Initialized() { return sht31Initialized; }
+    
+    // Time tracking accessor
+    int getLastUpdateHour() { return hourChangeTracking; }
+    
+    // WiFi status tracking
+    bool hasWiFiStatusChanged();
 };
 
 #endif // UIMANAGER_H
