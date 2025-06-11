@@ -104,6 +104,14 @@ public:
 
     setPanel(&_panel_instance);
   }
+
+  // Provide access to the RGB bus DMA frame buffer so other components (e.g. LVGL)
+  // can render directly into the memory that the RGB peripheral is scanning from.
+  void* getFrameBufferPtr() {
+    // getDMABuffer returns the base address of the single frame buffer that Bus_RGB
+    // allocated during init(). Passing length 0 is fine – the call ignores it.
+    return static_cast<void*>(_bus_instance.getDMABuffer(0));
+  }
 };
 
 #endif // LGFX_CONFIG_H

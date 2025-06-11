@@ -89,25 +89,16 @@ void my_log_cb(lv_log_level_t level, const char *buf)
 /* Display flushing with endianness fix for LVGL/LovyanGFX compatibility */
 void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
+    uint32_t w = area->x2 - area->x1 + 1;
+    uint32_t h = area->y2 - area->y1 + 1;
+
     if (gfx.getStartCount() == 0) {
         gfx.startWrite();
     }
-    
-    uint32_t w = area->x2 - area->x1 + 1;
-    uint32_t h = area->y2 - area->y1 + 1;
-    uint32_t pixel_count = w * h;
-    
-    // Fix endianness mismatch: LVGL outputs little-endian RGB565, LovyanGFX expects big-endian
-    uint16_t* pixel_data = (uint16_t*)px_map;
-    for (uint32_t i = 0; i < pixel_count; i++) {
-        uint16_t pixel = pixel_data[i];
-        // Swap high and low bytes: 0xABCD becomes 0xCDAB
-        pixel_data[i] = (pixel >> 8) | (pixel << 8);
-    }
-    
-    gfx.pushImage(area->x1, area->y1, w, h, pixel_data);
+
+    gfx.pushImage(area->x1, area->y1, w, h, reinterpret_cast<const uint16_t*>(px_map));
     gfx.endWrite();
-    
+
     lv_display_flush_ready(disp);
 }
 
@@ -157,6 +148,9 @@ void setup()
             Serial.printf("Display initialized: %dx%d\n", gfx.width(), gfx.height());
         }
         
+        // Ensure LGFX swaps RGB565 byte order internally so we can pass little-endian data directly.
+        gfx.setSwapBytes(true);
+
         // Clear screen before starting LVGL
         gfx.fillScreen(0x0000);
     }
@@ -177,10 +171,22 @@ void setup()
     display = lv_display_create(screenWidth, screenHeight);
     lv_display_set_flush_cb(display, my_disp_flush);
 
-    // Create LVGL display buffer in internal SRAM (DMA-compatible) 
-    // Use DMA_ATTR to force allocation in internal SRAM, not PSRAM
-    static lv_color_t buf1[screenWidth * 40];  // Buffer for 40 lines
-    lv_display_set_buffers(display, buf1, NULL, sizeof(lv_color_t) * screenWidth * 40, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    // Allocate a dedicated full-screen LVGL draw buffer in PSRAM (little-endian)
+    static lv_color_t* lvgl_fb = static_cast<lv_color_t*>(heap_caps_malloc(
+        screenWidth * screenHeight * sizeof(lv_color_t),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+
+    if (!lvgl_fb) {
+        Serial.println("ERROR: Unable to allocate LVGL framebuffer. Falling back to partial buffer.");
+        static lv_color_t fallback_buf[screenWidth * 40];
+        lv_display_set_buffers(display, fallback_buf, NULL,
+                               sizeof(lv_color_t) * screenWidth * 40,
+                               LV_DISPLAY_RENDER_MODE_PARTIAL);
+    } else {
+        lv_display_set_buffers(display, lvgl_fb, NULL,
+                               screenWidth * screenHeight * sizeof(lv_color_t),
+                               LV_DISPLAY_RENDER_MODE_FULL);
+    }
 
     // Initialize touch
     touch_indev = lv_indev_create();
