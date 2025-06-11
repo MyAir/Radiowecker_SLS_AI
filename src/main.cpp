@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <lvgl.h>
-#include <Arduino_GFX_Library.h>
+#include "lgfx_config.h"
 #include <SD.h>
 #include <SPI.h>
 #include <Wire.h>
@@ -9,7 +9,6 @@
 #include <ArduinoJson.h>
 #include "../lib/ui/ui.h"
 #include "UIManager.h"
-#include "touch.h"
 #include "ConfigManager.h"
 #include "debug_config.h"
 
@@ -46,8 +45,6 @@ UIManager* uiManager = nullptr;
 
 #include <ui.h>
 
-#define GFX_BL 44
-
 // SD Card pins
 #define SD_SCK  12
 #define SD_MISO 13
@@ -70,17 +67,8 @@ static lv_fs_res_t fs_tell(lv_fs_drv_t * drv, void * file_p, uint32_t * pos_p);
 static const uint16_t screenWidth  = 800;
 static const uint16_t screenHeight = 480;
 
-Arduino_ESP32RGBPanel *bus = new Arduino_ESP32RGBPanel(
-        40 /* DE */, 41 /* VSYNC */, 39 /* HSYNC */, 42 /* PCLK */,
-        45 /* R0 */, 48 /* R1 */, 47 /* R2 */, 21 /* R3 */, 14 /* R4 */,
-        5 /* G0 */, 6 /* G1 */, 7 /* G2 */, 15 /* G3 */, 16 /* G4 */, 4 /* G5 */,
-        8 /* B0 */, 3 /* B1 */, 46 /* B2 */, 9 /* B3 */, 1 /* B4 */,
-        0 /* hsync_polarity */, 8 /* hsync_front_porch */, 4 /* hsync_pulse_width */, 8 /* hsync_back_porch */,
-        0 /* vsync_polarity */, 8 /* vsync_front_porch */, 4 /* vsync_pulse_width */, 8 /* vsync_back_porch */,
-        1 /* pclk_active_neg */, 16000000 /* prefer_speed */);
-
-Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
-    800 /* width */, 480 /* height */, bus, 0 /* rotation */, true /* auto_flush */);
+// LovyanGFX instance
+static LGFX gfx;
 
 #if LV_USE_LOG != 0
 /* LVGL 9.2.2+ logging callback */
@@ -98,177 +86,104 @@ void my_log_cb(lv_log_level_t level, const char *buf)
 }
 #endif
 
-/* Display flushing */
+/* Display flushing with endianness fix for LVGL/LovyanGFX compatibility */
 void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
-    uint32_t w = (area->x2 - area->x1 + 1);
-    uint32_t h = (area->y2 - area->y1 + 1);
-
-    gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px_map, w, h);
+    if (gfx.getStartCount() == 0) {
+        gfx.startWrite();
+    }
+    
+    uint32_t w = area->x2 - area->x1 + 1;
+    uint32_t h = area->y2 - area->y1 + 1;
+    uint32_t pixel_count = w * h;
+    
+    // Fix endianness mismatch: LVGL outputs little-endian RGB565, LovyanGFX expects big-endian
+    uint16_t* pixel_data = (uint16_t*)px_map;
+    for (uint32_t i = 0; i < pixel_count; i++) {
+        uint16_t pixel = pixel_data[i];
+        // Swap high and low bytes: 0xABCD becomes 0xCDAB
+        pixel_data[i] = (pixel >> 8) | (pixel << 8);
+    }
+    
+    gfx.pushImage(area->x1, area->y1, w, h, pixel_data);
+    gfx.endWrite();
+    
     lv_display_flush_ready(disp);
 }
 
-// List directory contents on SD card with indentation for nested folders
-void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels) {
-    File root = fs.open(dirname);
-    if (!root) {
-        Serial.println("Failed to open directory");
-        return;
-    }
-    if (!root.isDirectory()) {
-        Serial.println("Not a directory");
-        return;
-    }
-
-    File file = root.openNextFile();
-    while (file) {
-        // Create proper indentation based on directory level
-        for (uint8_t i = 0; i < levels; i++) {
-            Serial.print("  ");
-        }
-        
-        Serial.print(file.name());
-        if (file.isDirectory()) {
-            Serial.println("/");
-            if (levels < 3) { // Limit recursion to 3 levels deep
-                listDirectory(fs, file.path(), levels + 1);
-            }
-        } else {
-            // Print file size
-            Serial.print("  (");
-            Serial.print(file.size());
-            Serial.println(" bytes)");
-        }
-        file = root.openNextFile();
-    }
-}
-
-/* Read the touchpad */
+/* Read the touchpad using LovyanGFX integrated touch */
 void my_touchpad_read(lv_indev_t *drv, lv_indev_data_t *data)
 {
-    static TouchPoint last_point = {0};
-    static uint32_t last_debug = 0;
-    static bool last_touched = false;
+    uint16_t touchX, touchY;
+    bool touched = gfx.getTouch(&touchX, &touchY);
     
-    // Get touch point
-    TouchPoint point;
-    bool touched = getTouchPoint(point);
-    
-    // Update LVGL input data
-    data->point.x = point.x;
-    data->point.y = point.y;
-    data->state = point.pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
-    
-    // Debug output on state change or periodically while touched
-    if (Serial) {
-        uint32_t now = millis();
-        
-        // On touch state change
-        if (point.pressed != last_touched) {
-#if TOUCH_DEBUG
-            if (point.pressed) {
-                Serial.printf("Touch BEGAN: x=%d, y=%d\n", point.x, point.y);
-            } else {
-                Serial.println("Touch ENDED");
-            }
-#endif
-            last_touched = point.pressed;
-        }
-        // Periodic update while touched (every 200ms)
-        else if (point.pressed && (now - last_debug > 200)) {
-#if TOUCH_DEBUG
-            Serial.printf("Touch HOLD: x=%d, y=%d\n", point.x, point.y);
-#endif
-            last_debug = now;
-        }
-    }
-    
-    // Update last point if touched
-    if (point.pressed) {
-        last_point = point;
+    if (touched) {
+        data->state = LV_INDEV_STATE_PRESSED;
+        data->point.x = touchX;
+        data->point.y = touchY;
+    } else {
+        data->state = LV_INDEV_STATE_RELEASED;
     }
 }
 
-/*use Arduinos millis() as tick source*/
-static uint32_t my_tick(void)
-{
+// Custom tick callback function for LVGL 9.x compatibility
+uint32_t my_tick_get_cb(void) {
     return millis();
 }
 
 void setup()
 {
-    // Initialize USB CDC serial communication
     Serial.begin(115200);
+    while(!Serial && millis() < 3000); // Wait up to 3 seconds for Serial
     
-    // Wait for USB CDC port to connect or timeout after 3 seconds
-    uint32_t startTime = millis();
-    while (!Serial && (millis() - startTime < 3000)) {
-        delay(10);
+    if (Serial) {
+        Serial.println("=====================================");
+        Serial.println("   RadioWecker SLS AI - Starting    ");
+        Serial.println("=====================================");
+        Serial.flush();
     }
-    
-    // Extra delay to ensure USB CDC is ready
-    delay(1000);
-    
-    Serial.println("\n\n--- Starting Setup ---");
-    Serial.println("USB CDC Serial initialized");
-    Serial.printf("CPU Frequency: %d MHz\n", getCpuFrequencyMhz());
-    Serial.printf("Free Heap: %d bytes\n", ESP.getFreeHeap());
 
     // Initialize display
     if (Serial) Serial.println("Initializing Display...");
-    gfx->begin();
-    gfx->fillScreen(BLACK);
-    pinMode(GFX_BL, OUTPUT);
-    digitalWrite(GFX_BL, LOW); // Turn on backlight
-    if (Serial) Serial.println("Display initialized");
+    if (!gfx.init())
+    {
+        if (Serial) {
+            Serial.println("ERROR: gfx.init() failed!");
+        }
+    }
+    else
+    {
+        if (Serial) {
+            Serial.printf("Display initialized: %dx%d\n", gfx.width(), gfx.height());
+        }
+        
+        // Clear screen before starting LVGL
+        gfx.fillScreen(0x0000);
+    }
     
     // Print LVGL version
-    String LVGL_Arduino = "LVGL v";
-    LVGL_Arduino += String(lv_version_major()) + "." + lv_version_minor() + "." + lv_version_patch();
-    Serial.println(LVGL_Arduino);
-
-    // Initialize LVGL
+    if (Serial) {
+        Serial.printf("LVGL Version: %d.%d.%d\n", LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
+    }
+    
     Serial.println("Initializing LVGL...");
     lv_init();
-    /*Set a tick source so that LVGL will know how much time elapsed. */
-    lv_tick_set_cb(my_tick);
+    // Initialize LVGL tick callback with proper signature for LVGL 9.x
+    lv_tick_set_cb(my_tick_get_cb);
 
     Serial.println("LVGL initialized");
 
-#if LV_USE_LOG != 0
-    lv_log_register_print_cb(my_log_cb);
-#endif
-
-    // Initialize display buffer
-    Serial.println("Allocating display buffer...");
-    static lv_color_t *buf1 = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * screenWidth * 40, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    if (buf1 == nullptr) {
-        Serial.println("ERROR: Failed to allocate display buffer");
-        while (1) { delay(100); }
-    }
-    Serial.println("Display buffer allocated");
-
-    // Initialize the display
+    // Create display and attach the flushing function
     display = lv_display_create(screenWidth, screenHeight);
     lv_display_set_flush_cb(display, my_disp_flush);
+
+    // Create LVGL display buffer in internal SRAM (DMA-compatible) 
+    // Use DMA_ATTR to force allocation in internal SRAM, not PSRAM
+    static lv_color_t buf1[screenWidth * 40];  // Buffer for 40 lines
     lv_display_set_buffers(display, buf1, NULL, sizeof(lv_color_t) * screenWidth * 40, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     // Initialize touch
-#if TOUCH_DEBUG
-    if (Serial) {
-        Serial.println("===== STARTING TOUCH INITIALIZATION =====");
-        Serial.println("Initializing touch controller...");
-    }
-#endif
-    touch_init();
-    
-    // Initialize the input device driver
-#if TOUCH_DEBUG
-    if (Serial) {
-        Serial.println("Initializing LVGL touch input device...");
-    }
-#endif
-    static lv_indev_t * touch_indev = lv_indev_create();
+    touch_indev = lv_indev_create();
     if (!touch_indev) {
         if (Serial) {
             Serial.println("ERROR: Failed to create LVGL input device!");
@@ -280,26 +195,12 @@ void setup()
         // Set the display for the input device
         if (display) {
             lv_indev_set_display(touch_indev, display);
-#if TOUCH_DEBUG
-            Serial.println("Touch input device display set");
-#endif
         } else {
             Serial.println("WARNING: Display not available for touch input device");
         }
         
         // Enable the input device
         lv_indev_enable(touch_indev, true);
-#if TOUCH_DEBUG
-        Serial.println("Touch input device created and configured");
-        
-        // Verify the input device is enabled
-        if (touch_indev) {
-            Serial.println("Touch input device is ready");
-        } else {
-            Serial.println("WARNING: Touch input device is not ready!");
-        }
-        Serial.println("Touch input device enabled");
-#endif
     }
 
     // Initialize SD Card
@@ -363,6 +264,7 @@ void setup()
 
     Serial.println("Setup done");
 }
+
 void connectToWiFi() {
 #if WIFI_DEBUG
     Serial.println("Reading WiFi credentials from config...");
@@ -682,6 +584,41 @@ void startPeriodicTasks() {
     }
 }
 
+// List directory contents on SD card with indentation for nested folders
+void listDirectory(fs::FS &fs, const char *dirname, uint8_t levels) {
+    File root = fs.open(dirname);
+    if (!root) {
+        Serial.println("Failed to open directory");
+        return;
+    }
+    if (!root.isDirectory()) {
+        Serial.println("Not a directory");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while (file) {
+        // Create proper indentation based on directory level
+        for (uint8_t i = 0; i < levels; i++) {
+            Serial.print("  ");
+        }
+        
+        Serial.print(file.name());
+        if (file.isDirectory()) {
+            Serial.println("/");
+            if (levels < 3) { // Limit recursion to 3 levels deep
+                listDirectory(fs, file.path(), levels + 1);
+            }
+        } else {
+            // Print file size
+            Serial.print("  (");
+            Serial.print(file.size());
+            Serial.println(" bytes)");
+        }
+        file = root.openNextFile();
+    }
+}
+
 void loop()
 {
     static uint32_t last_print = 0;
@@ -702,11 +639,10 @@ void loop()
     // Force reinitialize touch if needed (only on first run)
     if (first_run) {
         // If touch is not initialized properly after 3 seconds, try to reinitialize
-        if (now > 3000 && !touch_initialized) {
+        if (now > 3000) {
 #if TOUCH_DEBUG
-            Serial.println("\n===== REINITIALIZING TOUCH CONTROLLER =====\n");
+            Serial.println("\n===== TOUCH AVAILABLE THROUGH LOVYANGFX =====\n");
 #endif
-            touch_init();
         }
         // After 5 seconds, consider first run complete
         if (now > 5000) {
@@ -724,27 +660,18 @@ void loop()
             
 #if TOUCH_DEBUG
             // Only print touch debug info if TOUCH_DEBUG is enabled
-            if (touch_initialized) {
-                Serial.println("Touch device is enabled");
-                // Try to read touch to keep it active
-                TouchPoint point;
-                if (getTouchPoint(point)) {
-                    if (point.pressed) {
-                        Serial.printf("Touch active at X: %d, Y: %d\n", point.x, point.y);
-                    }
-                }
-            } else {
+            Serial.println("Touch device is available through LovyanGFX");
+            // Try to read touch to keep it active
+            uint16_t touchX, touchY;
+            bool touched = gfx.getTouch(&touchX, &touchY);
+            if (touched) {
+                Serial.printf("Touch active at X: %d, Y: %d\n", touchX, touchY);
+            }
 #else
             // If not in debug mode, just silently keep touch active
-            if (touch_initialized) {
-                TouchPoint point;
-                getTouchPoint(point);
-            } else {
+            uint16_t touchX, touchY;
+            gfx.getTouch(&touchX, &touchY);
 #endif
-#if TOUCH_DEBUG
-                Serial.println("Touch device is not initialized!");
-#endif
-            }
         }
         last_print = now;
     }

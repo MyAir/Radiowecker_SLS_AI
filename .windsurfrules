@@ -28,8 +28,7 @@
 - PlatformIO 
 - ESP32-S3
 - LVGL 9.2.2 
-- GFX Library for Arduino v1.6.0
-- TAMC_GT911 v1.0.2
+- lovyan03/LovyanGFX@^1.2.7
 - ESP8266Audio
 - Adafruit SGP30 Sensor
 - Adafruit SHT31 Library
